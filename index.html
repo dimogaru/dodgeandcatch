@@ -337,6 +337,7 @@
       }
 
       function update(dt) {
+        flashTimer = Math.max(0, flashTimer - dt);
         if (state !== "playing") {
           updateAmbient(dt);
           return;
@@ -389,11 +390,12 @@
                 items.splice(index, 1);
                 continue;
               }
-              endGame();
+              endGame(player);
               return;
             }
             if (item.type === "goldenGem") {
-              feverTimer = 3;
+              feverTimer = 5;
+              flashTimer = 0.42;
               shake = Math.max(shake, 4 * scale);
               addFloatingText(item.x, item.y, "FEVER / SHIELD", "#ffe36e", 1.25);
               burst(item.x, item.y, "#ffd84a", 24);
@@ -412,10 +414,10 @@
               burst(item.x, item.y, item.type === "blueGem" ? COLORS.blue : COLORS.pink, 14);
               playCollect(item.zone);
             } else {
-              score = Math.max(0, score - 150);
+              score = Math.max(0, score - 100);
               comboStreak = 0;
               combo = 1;
-              addFloatingText(item.x, item.y, "-150", COLORS.redLight, 1.08);
+              addFloatingText(item.x, item.y, "-100", COLORS.redLight, 1.08);
               burst(item.x, item.y, COLORS.red, 9);
               playError();
             }
@@ -512,6 +514,7 @@
         drawPlayer(players.pink);
         drawParticles();
         drawFloatingTexts();
+        drawFlash();
         drawHud();
         if (state === "ready") drawStartScreen();
         if (state === "gameover") drawGameOver();
@@ -564,11 +567,22 @@
 
       function drawZoneGuides() {
         const divider = width / 2;
-        const dash = Math.max(6 * scale, 5);
+        const dot = Math.max(2.5 * scale, 2);
+        const gap = Math.max(8 * scale, 7);
         ctx.save();
-        ctx.setLineDash([dash, dash * 2.2]);
-        ctx.strokeStyle = COLORS.line;
-        ctx.lineWidth = 1;
+        ctx.setLineDash([dot, gap]);
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "rgba(124, 205, 255, 0.78)";
+        ctx.shadowColor = "#5dbdff";
+        ctx.shadowBlur = 14 * scale;
+        ctx.lineWidth = Math.max(1.5, 1.35 * scale);
+        ctx.beginPath();
+        ctx.moveTo(divider, 0);
+        ctx.lineTo(divider, height);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "rgba(236, 249, 255, 0.62)";
+        ctx.lineWidth = Math.max(0.8, 0.7 * scale);
         ctx.beginPath();
         ctx.moveTo(divider, 0);
         ctx.lineTo(divider, height);
@@ -799,6 +813,19 @@
         ctx.restore();
       }
 
+      function drawFlash() {
+        if (flashTimer <= 0) return;
+        const strength = Math.pow(flashTimer / 0.42, 0.58);
+        ctx.save();
+        ctx.globalAlpha = strength * 0.78;
+        ctx.fillStyle = "#fffdf0";
+        ctx.fillRect(-20, -20, width + 40, height + 40);
+        ctx.globalAlpha = strength * 0.24;
+        ctx.fillStyle = "#ffd84a";
+        ctx.fillRect(-20, -20, width + 40, height + 40);
+        ctx.restore();
+      }
+
       function drawHud() {
         const pad = Math.max(20 * scale, 18);
         const top = Math.max(26 * scale, 22);
@@ -847,7 +874,7 @@
             roundedRect(meterX, meterY + 22 * scale, meterW, meterH, meterH / 2);
             ctx.fill();
             ctx.fillStyle = "#ffd84a";
-            roundedRect(meterX, meterY + 22 * scale, meterW * Math.min(1, feverTimer / 3), meterH, meterH / 2);
+            roundedRect(meterX, meterY + 22 * scale, meterW * Math.min(1, feverTimer / 5), meterH, meterH / 2);
             ctx.fill();
           }
         }
