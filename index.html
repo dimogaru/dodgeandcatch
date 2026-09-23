@@ -84,6 +84,7 @@
       let combo = 1;
       let comboStreak = 0;
       let feverTimer = 0;
+      let flashTimer = 0;
       let audioContext = null;
       let pointerStartX = 0;
       let pointerStartY = 0;
@@ -166,6 +167,7 @@
         combo = 1;
         comboStreak = 0;
         feverTimer = 0;
+        flashTimer = 0;
         items.length = 0;
         particles.length = 0;
         trails.length = 0;
@@ -179,14 +181,17 @@
         playTone(660, 0.1, "sine", 0.04, 0.05);
       }
 
-      function endGame() {
+      function endGame(hitPlayer) {
         if (state !== "playing") return;
         state = "gameover";
         highScore = Math.max(highScore, score);
         saveHighScore();
-        shake = 14 * scale;
-        burst(players.blue.x, players.blue.y, COLORS.red, 18);
-        burst(players.pink.x, players.pink.y, COLORS.red, 18);
+        shake = 16 * scale;
+        const impactX = hitPlayer ? hitPlayer.x : width / 2;
+        const impactY = hitPlayer ? hitPlayer.y : height * 0.8;
+        burst(impactX, impactY, COLORS.red, 42);
+        burst(impactX, impactY, COLORS.redLight, 26);
+        burst(impactX, impactY, "#ffd1d5", 10);
         playImpact();
       }
 
@@ -325,7 +330,7 @@
           x: laneX(zone, lane),
           y: -32 * scale,
           size: type === "obstacle" ? 22 * scale : type === "goldenGem" ? 19 * scale : 16 * scale,
-          speed: (210 + Math.min(150, elapsed * 4.5) + Math.min(135, score * 0.08) + Math.random() * 40) * scale,
+          speed: (210 + Math.min(150, elapsed * 2.7) + Math.min(135, score * 0.08) + Math.random() * 40) * scale,
           rotation: Math.random() * Math.PI,
           spin: (Math.random() - 0.5) * 3.4
         });
