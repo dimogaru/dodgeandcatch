@@ -64,6 +64,18 @@ app.get(["/", "/index.html"], (_request, response) => {
   response.sendFile(publicFile("index.html"));
 });
 
+app.get("/manifest.json", (_request, response) => {
+  response.sendFile(publicFile("manifest.json"));
+});
+
+app.get("/sw.js", (_request, response) => {
+  response.sendFile(publicFile("sw.js"));
+});
+
+app.get("/icon.svg", (_request, response) => {
+  response.type("image/svg+xml").sendFile(publicFile("icon.svg"));
+});
+
 function normalizeNickname(value) {
   if (typeof value !== "string") return "";
   return Array.from(value)

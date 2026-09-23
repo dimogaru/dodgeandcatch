@@ -8,6 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="icon" href="data:,">
   <title>Dodge & Catch — Neon Run</title>
   <style>
@@ -580,6 +581,47 @@
 </head>
 <body>
   <canvas id="game" aria-label="Dodge and Catch, juego de esquivar y recoger gemas"></canvas>
+  <div id="welcomeScreen" class="welcome-screen">
+    <section class="welcome-card" aria-labelledby="welcomeTitle">
+      <h1 id="welcomeTitle" class="welcome-heading">DODGE<span>&amp; CATCH</span></h1>
+      <p class="welcome-kicker">CAMBIA DE CARRIL · ATRAPA · SOBREVIVE</p>
+
+      <div class="instruction-grid" aria-label="Instrucciones del juego">
+        <article class="instruction-card">
+          <div class="instruction-icon" aria-hidden="true">↔</div>
+          <h3>TAP IZQUIERDA / DERECHA</h3>
+          <p>Cambia de carril la esfera correspondiente.</p>
+        </article>
+        <article class="instruction-card">
+          <div class="instruction-icon red" aria-hidden="true">!</div>
+          <h3>BLOQUES ROJOS</h3>
+          <p>Esquívalos. Un impacto termina la partida.</p>
+        </article>
+        <article class="instruction-card">
+          <div class="instruction-icon blue" aria-hidden="true">+100</div>
+          <h3>GEMAS DE TU COLOR</h3>
+          <p>Consigue +100 PTS y aumenta el Combo.</p>
+        </article>
+        <article class="instruction-card">
+          <div class="instruction-icon pink" aria-hidden="true">−100</div>
+          <h3>COLOR CONTRARIO</h3>
+          <p>Recogerlas penaliza −100 PTS.</p>
+        </article>
+        <article class="instruction-card">
+          <div class="instruction-icon gold" aria-hidden="true">★</div>
+          <h3>GEMA DORADA</h3>
+          <p>Activa 5 segundos de Overdrive e invencibilidad.</p>
+        </article>
+      </div>
+
+      <div class="welcome-actions">
+        <button id="startButton" class="welcome-action" type="button">JUGAR AHORA</button>
+        <button id="welcomeRankingButton" class="welcome-action secondary" type="button">VER RANKING</button>
+        <button id="installButton" class="welcome-action install" type="button" hidden>INSTALAR APP</button>
+      </div>
+      <p id="installHint" class="install-hint" aria-live="polite"></p>
+    </section>
+  </div>
   <button id="rankingButton" class="ui-button" type="button">RANKING</button>
 
   <div id="rankingModal" class="modal-backdrop" hidden>
@@ -621,6 +663,11 @@
 
       const canvas = document.getElementById("game");
       const ctx = canvas.getContext("2d", { alpha: false });
+      const welcomeScreen = document.getElementById("welcomeScreen");
+      const startButton = document.getElementById("startButton");
+      const welcomeRankingButton = document.getElementById("welcomeRankingButton");
+      const installButton = document.getElementById("installButton");
+      const installHint = document.getElementById("installHint");
       const rankingButton = document.getElementById("rankingButton");
       const rankingModal = document.getElementById("rankingModal");
       const rankingBody = document.getElementById("rankingBody");
@@ -666,6 +713,7 @@
       let globalRanking = [];
       let rankingLoaded = false;
       let pendingRankingScore = null;
+      let deferredInstallPrompt = null;
       let audioContext = null;
       let pointerStartX = 0;
       let pointerStartY = 0;
@@ -769,6 +817,11 @@
         modal.hidden = true;
       }
 
+      function hideWelcomeScreen() {
+        welcomeScreen.hidden = true;
+        syncOverlayState();
+      }
+
       function openNicknameModal() {
         nicknameScore.textContent = score.toLocaleString("es-ES");
         nicknameInput.value = "";
@@ -820,7 +873,7 @@
       }
 
       function syncOverlayState() {
-        rankingButton.hidden = state !== "ready";
+        rankingButton.hidden = state !== "ready" || !welcomeScreen.hidden;
       }
 
       function resize() {
@@ -867,6 +920,7 @@
 
       function startGame() {
         ensureAudio();
+        hideWelcomeScreen();
         state = "playing";
         score = 0;
         elapsed = 0;
@@ -1763,6 +1817,8 @@
       canvas.addEventListener("pointerdown", handlePointerDown, { passive: true });
       canvas.addEventListener("pointerup", handlePointerUp, { passive: true });
       window.addEventListener("keydown", handleKeyDown);
+      startButton.addEventListener("click", startGame);
+      welcomeRankingButton.addEventListener("click", openRankingModal);
       rankingButton.addEventListener("click", openRankingModal);
       saveRankingButton.addEventListener("click", saveRankingScore);
       skipRankingButton.addEventListener("click", () => {
@@ -1780,6 +1836,43 @@
       rankingModal.addEventListener("click", (event) => {
         if (event.target === rankingModal) closeModal(rankingModal);
       });
+      installButton.addEventListener("click", async () => {
+        if (!deferredInstallPrompt) {
+          installHint.textContent = "La instalación no está disponible en este navegador.";
+          return;
+        }
+        const installEvent = deferredInstallPrompt;
+        deferredInstallPrompt = null;
+        installButton.disabled = true;
+        installHint.textContent = "ABRIENDO INSTALACIÓN...";
+        installEvent.prompt();
+        const choice = await installEvent.userChoice;
+        installButton.disabled = false;
+        if (choice.outcome === "accepted") {
+          installButton.hidden = true;
+          installHint.textContent = "APP INSTALADA CORRECTAMENTE";
+        } else {
+          installHint.textContent = "Puedes instalarla cuando quieras desde este botón.";
+        }
+      });
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        installButton.hidden = false;
+        installHint.textContent = "INSTALACIÓN RÁPIDA DISPONIBLE";
+      });
+      window.addEventListener("appinstalled", () => {
+        deferredInstallPrompt = null;
+        installButton.hidden = true;
+        installHint.textContent = "APP INSTALADA CORRECTAMENTE";
+      });
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch(() => {
+            installHint.textContent = "La instalación PWA no está disponible ahora.";
+          });
+        });
+      }
 
       resize();
       syncOverlayState();
