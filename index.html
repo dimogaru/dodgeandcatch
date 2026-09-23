@@ -3,7 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#090b18">
+  <meta name="theme-color" content="#0a0a14">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="data:,">
   <title>Dodge & Catch — Neon Run</title>
   <style>
@@ -82,6 +86,203 @@
 
     .ui-button[hidden] {
       display: none;
+    }
+
+    .welcome-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+      padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+      background:
+        radial-gradient(circle at 50% 22%, rgba(31, 91, 165, 0.25), transparent 38%),
+        linear-gradient(160deg, rgba(5, 10, 29, 0.94), rgba(14, 5, 29, 0.94));
+      transition: opacity 220ms ease, visibility 220ms ease;
+    }
+
+    .welcome-screen[hidden] {
+      display: none;
+    }
+
+    .welcome-card {
+      width: min(920px, 100%);
+      max-height: calc(100dvh - 36px);
+      overflow: auto;
+      padding: clamp(22px, 4vw, 42px);
+      border: 1px solid rgba(91, 196, 255, 0.52);
+      border-radius: 28px;
+      background:
+        linear-gradient(145deg, rgba(14, 31, 67, 0.82), rgba(35, 9, 50, 0.82)),
+        rgba(9, 13, 31, 0.9);
+      box-shadow:
+        0 0 0 1px rgba(255, 91, 179, 0.11),
+        0 0 55px rgba(52, 158, 255, 0.23),
+        0 28px 100px rgba(0, 0, 0, 0.52),
+        inset 0 1px 0 rgba(255, 255, 255, 0.13);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .welcome-heading {
+      margin: 0;
+      color: #f6fbff;
+      font: 900 clamp(2rem, 7vw, 4.25rem) "Segoe UI", sans-serif;
+      letter-spacing: 0.11em;
+      line-height: 0.95;
+      text-align: center;
+      text-shadow:
+        0 0 8px rgba(255, 255, 255, 0.8),
+        0 0 22px rgba(61, 191, 255, 0.95),
+        0 0 46px rgba(255, 53, 166, 0.5);
+      animation: welcome-neon-pulse 2.2s ease-in-out infinite;
+    }
+
+    .welcome-heading span {
+      display: block;
+      color: #ff4fa3;
+      font-size: 0.76em;
+      letter-spacing: 0.18em;
+      text-shadow:
+        0 0 8px rgba(255, 255, 255, 0.72),
+        0 0 22px rgba(255, 64, 166, 0.98),
+        0 0 48px rgba(255, 64, 166, 0.58);
+    }
+
+    @keyframes welcome-neon-pulse {
+      0%, 100% {
+        filter: brightness(0.95);
+      }
+      50% {
+        filter: brightness(1.18);
+      }
+    }
+
+    .welcome-kicker {
+      margin: 16px 0 0;
+      color: #87a3c8;
+      font: 700 0.68rem "Segoe UI", sans-serif;
+      letter-spacing: 0.23em;
+      text-align: center;
+    }
+
+    .instruction-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    .instruction-card {
+      min-height: 145px;
+      padding: 15px 11px;
+      border: 1px solid rgba(117, 169, 229, 0.2);
+      border-radius: 16px;
+      background: rgba(7, 15, 38, 0.54);
+      box-shadow: inset 0 0 22px rgba(57, 128, 255, 0.045);
+      text-align: center;
+    }
+
+    .instruction-icon {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 11px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      color: #6fd2ff;
+      font: 900 1.15rem "Segoe UI", sans-serif;
+      box-shadow: 0 0 18px currentColor;
+    }
+
+    .instruction-icon.red {
+      color: #ff506c;
+    }
+
+    .instruction-icon.blue {
+      color: #43c8ff;
+    }
+
+    .instruction-icon.pink {
+      color: #ff55ad;
+    }
+
+    .instruction-icon.gold {
+      color: #ffd84a;
+    }
+
+    .instruction-card h3 {
+      margin: 0;
+      color: #f4f8ff;
+      font: 900 0.67rem "Segoe UI", sans-serif;
+      letter-spacing: 0.09em;
+      line-height: 1.3;
+    }
+
+    .instruction-card p {
+      margin: 8px 0 0;
+      color: #9caccc;
+      font: 600 0.65rem "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    .welcome-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 11px;
+      justify-content: center;
+      margin-top: 28px;
+    }
+
+    .welcome-action {
+      min-width: 178px;
+      padding: 14px 18px;
+      border: 1px solid rgba(84, 201, 255, 0.68);
+      border-radius: 12px;
+      color: #f5f8ff;
+      background: linear-gradient(105deg, #1668dc, #d02d88);
+      box-shadow: 0 0 24px rgba(53, 162, 255, 0.3);
+      font: 900 0.7rem "Segoe UI", sans-serif;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .welcome-action.secondary {
+      border-color: rgba(132, 185, 239, 0.42);
+      background: rgba(255, 255, 255, 0.07);
+      box-shadow: none;
+      color: #b7c9e9;
+    }
+
+    .welcome-action.install {
+      border-color: rgba(255, 224, 95, 0.8);
+      background: linear-gradient(105deg, #a66005, #ffd84a);
+      box-shadow: 0 0 26px rgba(255, 194, 55, 0.34);
+      color: #1a1220;
+    }
+
+    .welcome-action:hover,
+    .welcome-action:focus-visible {
+      outline: none;
+      filter: brightness(1.14);
+      transform: translateY(-2px);
+    }
+
+    .welcome-action[hidden] {
+      display: none;
+    }
+
+    .install-hint {
+      min-height: 1.2em;
+      margin: 12px 0 0;
+      color: #8195b9;
+      font: 600 0.64rem "Segoe UI", sans-serif;
+      letter-spacing: 0.07em;
+      text-align: center;
     }
 
     .modal-backdrop {
@@ -322,6 +523,43 @@
 
       .glass-card {
         border-radius: 20px;
+      }
+
+      .welcome-card {
+        border-radius: 21px;
+        padding: 24px 15px;
+      }
+
+      .welcome-kicker {
+        font-size: 0.58rem;
+      }
+
+      .instruction-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 22px;
+      }
+
+      .instruction-card {
+        min-height: 132px;
+        padding: 13px 8px;
+      }
+
+      .instruction-card h3 {
+        font-size: 0.6rem;
+      }
+
+      .instruction-card p {
+        font-size: 0.61rem;
+      }
+
+      .welcome-actions {
+        flex-direction: column;
+        margin-top: 22px;
+      }
+
+      .welcome-action {
+        width: 100%;
       }
 
       .ranking-table th,
