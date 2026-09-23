@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#090b18">
+  <title>Dodge & Catch — Neon Run</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      background: #0a0a14;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #0a0a14;
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      width: 100dvw;
+      height: 100dvh;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Dodge and Catch, juego de esquivar y recoger gemas"></canvas>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      const COLORS = {
+        bg: "#080a16",
+        blue: "#37bfff",
+        blueSoft: "#1c76ff",
+        pink: "#ff4fa3",
+        pinkSoft: "#ff267f",
+        red: "#ff3b58",
+        redLight: "#ff7b75",
+        white: "#f3f7ff",
+        muted: "#8290ad",
+        grid: "rgba(103, 127, 191, 0.08)",
+        line: "rgba(124, 149, 206, 0.16)"
+      };
+
+      let width = 0;
+      let height = 0;
+      let dpr = 1;
+      let scale = 1;
+      let lastTime = 0;
+      let animationId = 0;
+      let state = "ready";
+      let score = 0;
+      let highScore = readHighScore();
+      let elapsed = 0;
+      let spawnTimer = 0;
+      let shake = 0;
+      let audioContext = null;
+      let pointerStartX = 0;
+      let pointerStartY = 0;
+
+      const items = [];
+      const particles = [];
+      const trails = [];
+
+      const players = {
+        blue: { lane: 0, x: 0, y: 0, targetX: 0, color: COLORS.blue, glow: COLORS.blueSoft },
+        pink: { lane: 0, x: 0, y: 0, targetX: 0, color: COLORS.pink, glow: COLORS.pinkSoft }
+      };
+
+      function readHighScore() {
+        try {
+          return Number(localStorage.getItem("dodge-catch-high-score")) || 0;
+        } catch (error) {
+          return 0;
+        }
+      }
+
+      function saveHighScore() {
+        try {
+          localStorage.setItem("dodge-catch-high-score", String(highScore));
+        } catch (error) {
+          // Storage may be unavailable in private browsing; the session score still works.
+        }
+      }
+
+      function resize() {
+        const rect = canvas.getBoundingClientRect();
+        width = Math.max(1, Math.round(rect.width));
+        height = Math.max(1, Math.round(rect.height));
+        dpr = Math.min(2, window.devicePixelRatio || 1);
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        scale = Math.min(width / 390, height / 844);
+        scale = Math.max(0.72, Math.min(scale, 1.55));
+        layoutPlayers();
+      }
+
+      function layoutPlayers() {
+        const floorY = height - Math.max(74 * scale, height * 0.12);
+        players.blue.y = floorY;
+        players.pink.y = floorY;
+        players.blue.targetX = laneX("blue", players.blue.lane);
+        players.pink.targetX = laneX("pink", players.pink.lane);
+        if (!players.blue.x) players.blue.x = players.blue.targetX;
+        if (!players.pink.x) players.pink.x = players.pink.targetX;
+      }
+
+      function zoneBounds(zone) {
+        const divider = width / 2;
+        const padding = Math.max(24 * scale, width * 0.055);
+        if (zone === "blue") return { left: padding, right: divider - padding };
+        return { left: divider + padding, right: width - padding };
+      }
+
+      function laneX(zone, lane) {
+        const bounds = zoneBounds(zone);
+        return lane === 0
+          ? bounds.left + (bounds.right - bounds.left) * 0.31
+          : bounds.left + (bounds.right - bounds.left) * 0.69;
+      }
+
+      function laneWidth() {
+        const bounds = zoneBounds("blue");
+        return Math.max(30 * scale, (bounds.right - bounds.left) * 0.28);
+      }
+
+      function startGame() {
+        ensureAudio();
+        state = "playing";
+        score = 0;
+        elapsed = 0;
+        spawnTimer = 0.32;
+        shake = 0;
+        items.length = 0;
+        particles.length = 0;
+        trails.length = 0;
+        players.blue.lane = 0;
+        players.pink.lane = 0;
+        layoutPlayers();
+        playTone(330, 0.08, "sine", 0.045);
+        playTone(660, 0.1, "sine", 0.04, 0.05);
+      }
+
+      function endGame() {
+        if (state !== "playing") return;
+        state = "gameover";
+        highScore = Math.max(highScore, score);
+        saveHighScore();
+        shake = 14 * scale;
+        burst(players.blue.x, players.blue.y, COLORS.red, 18);
+        burst(players.pink.x, players.pink.y, COLORS.red, 18);
+        playImpact();
+      }
+
+      function toggleLane(zone) {
+        ensureAudio();
+        if (state === "ready" || state === "gameover") {
+          startGame();
+          return;
+        }
+        if (state !== "playing") return;
+        const player = players[zone];
+        player.lane = player.lane === 0 ? 1 : 0;
+        player.targetX = laneX(zone, player.lane);
+        burst(player.x, player.y, player.color, 8);
+        playTone(zone === "blue" ? 500 : 620, 0.07, "triangle", 0.032);
+      }
+
+      function handlePointerDown(event) {
+        pointerStartX = event.clientX;
+        pointerStartY = event.clientY;
+        ensureAudio();
+      }
+
+      function handlePointerUp(event) {
+        const dx = event.clientX - pointerStartX;
+        const dy = event.clientY - pointerStartY;
+        if (Math.abs(dx) > Math.max(28, width * 0.08) || Math.abs(dy) > Math.max(28, height * 0.06)) {
+          return;
+        }
+        if (state === "gameover" && isRestartButton(event.clientX, event.clientY)) {
+          startGame();
+          return;
+        }
+        toggleLane(event.clientX < width / 2 ? "blue" : "pink");
+      }
+
+      function handleKeyDown(event) {
+        const key = event.key.toLowerCase();
+        if (["arrowleft", "a", "arrowright", "d", " ", "enter"].includes(key)) {
+          event.preventDefault();
+        }
+        if (key === "arrowleft" || key === "a") toggleLane("blue");
+        if (key === "arrowright" || key === "d") toggleLane("pink");
+        if ((key === " " || key === "enter") && state !== "playing") startGame();
+      }
+
+      function isRestartButton(x, y) {
+        const button = restartButtonRect();
+        return x >= button.x && x <= button.x + button.w && y >= button.y && y <= button.y + button.h;
+      }
+
+      function restartButtonRect() {
+        const buttonW = Math.min(270 * scale, width * 0.66);
+        const buttonH = Math.max(52 * scale, 48);
+        return { x: (width - buttonW) / 2, y: height * 0.63, w: buttonW, h: buttonH };
+      }
+
+      function ensureAudio() {
+        if (!audioContext) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
+          audioContext = new AudioContext();
+        }
+        if (audioContext.state === "suspended") audioContext.resume();
+      }
+
+      function playTone(frequency, duration, type, volume, delay = 0) {
+        if (!audioContext) return;
+        const now = audioContext.currentTime + delay;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, now);
+        oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.035, now + duration);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(volume, now + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start(now);
+        oscillator.stop(now + duration + 0.025);
+      }
+
+      function playCollect(zone) {
+        const base = zone === "blue" ? 660 : 740;
+        playTone(base, 0.13, "sine", 0.055);
+        playTone(base * 1.5, 0.18, "sine", 0.04, 0.055);
+      }
+
+      function playImpact() {
+        if (!audioContext) return;
+        const now = audioContext.currentTime;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = "sawtooth";
+        oscillator.frequency.setValueAtTime(190, now);
+        oscillator.frequency.exponentialRampToValueAtTime(46, now + 0.34);
+        gain.gain.setValueAtTime(0.09, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.38);
+      }
+
+      function spawnItem() {
+        const blueSide = Math.random() < 0.5;
+        const zone = blueSide ? "blue" : "pink";
+        const lane = Math.random() < 0.5 ? 0 : 1;
+        const obstacleChance = Math.min(0.63, 0.39 + elapsed * 0.006);
+        const type = Math.random() < obstacleChance ? "obstacle" : (Math.random() < 0.5 ? "blueGem" : "pinkGem");
+        items.push({
+          zone,
+          lane,
+          type,
+          x: laneX(zone, lane),
+          y: -32 * scale,
+          size: type === "obstacle" ? 22 * scale : 16 * scale,
+          speed: (210 + Math.min(150, elapsed * 4.5) + Math.random() * 40) * scale,
+          rotation: Math.random() * Math.PI,
+          spin: (Math.random() - 0.5) * 3.4
+        });
+      }
+
+      function update(dt) {
+        if (state !== "playing") {
+          updateAmbient(dt);
+          return;
+        }
+
+        elapsed += dt;
+        spawnTimer -= dt;
+        const interval = Math.max(0.34, 0.78 - elapsed * 0.006);
+        if (spawnTimer <= 0) {
+          spawnItem();
+          spawnTimer = interval * (0.78 + Math.random() * 0.38);
+        }
+
+        for (const player of Object.values(players)) {
+          const previousX = player.x;
+          player.x += (player.targetX - player.x) * Math.min(1, dt * 13);
+          if (Math.abs(player.x - previousX) > 0.2) {
+            trails.push({
+              x: player.x,
+              y: player.y + (Math.random() - 0.5) * 8 * scale,
+              color: player.color,
+              life: 0.5,
+              maxLife: 0.5,
+              size: (3 + Math.random() * 5) * scale
+            });
+          }
+        }
+
+        for (let index = items.length - 1; index >= 0; index--) {
+          const item = items[index];
+          item.y += item.speed * dt;
+          item.rotation += item.spin * dt;
+          const player = item.zone === "blue" ? players.blue : players.pink;
+          if (item.y > height + 40 * scale) {
+            items.splice(index, 1);
+            continue;
+          }
+          if (intersects(item, player)) {
+            if (item.type === "obstacle") {
+              endGame();
+              return;
+            }
+            if ((item.type === "blueGem" && item.zone === "blue") ||
+                (item.type === "pinkGem" && item.zone === "pink")) {
+              score += 100;
+              burst(item.x, item.y, item.type === "blueGem" ? COLORS.blue : COLORS.pink, 14);
+              playCollect(item.zone);
+            } else {
+              burst(item.x, item.y, item.type === "blueGem" ? COLORS.blue : COLORS.pink, 4);
+            }
+            items.splice(index, 1);
+          }
+        }
+        updateParticles(dt);
+        shake *= Math.max(0, 1 - dt * 9);
+      }
+
+      function updateAmbient(dt) {
+        for (const player of Object.values(players)) {
+          player.x += (player.targetX - player.x) * Math.min(1, dt * 10);
+        }
+        updateParticles(dt);
+        shake *= Math.max(0, 1 - dt * 9);
+      }
+
+      function intersects(item, player) {
+        const radius = 18 * scale;
+        const itemRadius = item.size * 0.8;
+        return Math.abs(item.x - player.x) < radius + itemRadius &&
+          Math.abs(item.y - player.y) < radius + itemRadius;
+      }
+
+      function burst(x, y, color, amount) {
+        for (let i = 0; i < amount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const velocity = (35 + Math.random() * 130) * scale;
+          particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * velocity,
+            vy: Math.sin(angle) * velocity,
+            color,
+            life: 0.42 + Math.random() * 0.45,
+            maxLife: 0.85,
+            size: (1.5 + Math.random() * 3.8) * scale
+          });
+        }
+      }
+
+      function updateParticles(dt) {
+        for (let index = particles.length - 1; index >= 0; index--) {
+          const particle = particles[index];
+          particle.life -= dt;
+          particle.x += particle.vx * dt;
+          particle.y += particle.vy * dt;
+          particle.vx *= Math.pow(0.08, dt);
+          particle.vy *= Math.pow(0.08, dt);
+          particle.vy += 38 * scale * dt;
+          if (particle.life <= 0) particles.splice(index, 1);
+        }
+        for (let index = trails.length - 1; index >= 0; index--) {
+          trails[index].life -= dt;
+          if (trails[index].life <= 0) trails.splice(index, 1);
+        }
+      }
+
+      function draw(time) {
+        const offsetX = shake > 0 ? (Math.random() - 0.5) * shake : 0;
+        const offsetY = shake > 0 ? (Math.random() - 0.5) * shake : 0;
+        ctx.save();
+        ctx.translate(offsetX, offsetY);
+        drawBackground(time);
+        drawZoneGuides();
+        drawItems();
+        drawTrails();
+        drawPlayer(players.blue);
+        drawPlayer(players.pink);
+        drawParticles();
+        drawHud();
+        if (state === "ready") drawStartScreen();
+        if (state === "gameover") drawGameOver();
+        ctx.restore();
+      }
+
+      function drawBackground(time) {
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, "#070916");
+        gradient.addColorStop(0.56, "#0b0d1d");
+        gradient.addColorStop(1, "#120a1a");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-20, -20, width + 40, height + 40);
+
+        const blueGlow = ctx.createRadialGradient(width * 0.18, height * 0.78, 0, width * 0.18, height * 0.78, width * 0.58);
+        blueGlow.addColorStop(0, "rgba(25, 146, 255, 0.09)");
+        blueGlow.addColorStop(1, "rgba(25, 146, 255, 0)");
+        ctx.fillStyle = blueGlow;
+        ctx.fillRect(0, 0, width, height);
+        const pinkGlow = ctx.createRadialGradient(width * 0.82, height * 0.78, 0, width * 0.82, height * 0.78, width * 0.58);
+        pinkGlow.addColorStop(0, "rgba(255, 38, 131, 0.085)");
+        pinkGlow.addColorStop(1, "rgba(255, 38, 131, 0)");
+        ctx.fillStyle = pinkGlow;
+        ctx.fillRect(0, 0, width, height);
+
+        const gridSize = Math.max(31 * scale, 36);
+        ctx.strokeStyle = COLORS.grid;
+        ctx.lineWidth = 1;
+        const drift = (time * 0.016) % gridSize;
+        for (let x = -gridSize + drift; x < width + gridSize; x += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+        }
+        for (let y = -gridSize + drift; y < height + gridSize; y += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        }
+        const scanY = ((time * 0.045) % (height + 80)) - 40;
+        const scan = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+        scan.addColorStop(0, "rgba(150, 200, 255, 0)");
+        scan.addColorStop(0.5, "rgba(150, 200, 255, 0.025)");
+        scan.addColorStop(1, "rgba(150, 200, 255, 0)");
+        ctx.fillStyle = scan;
+        ctx.fillRect(0, scanY - 30, width, 60);
+      }
+
+      function drawZoneGuides() {
+        const divider = width / 2;
+        const dash = Math.max(6 * scale, 5);
+        ctx.save();
+        ctx.setLineDash([dash, dash * 2.2]);
+        ctx.strokeStyle = COLORS.line;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(divider, 0);
+        ctx.lineTo(divider, height);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.strokeStyle = "rgba(55, 191, 255, 0.1)";
+        ctx.lineWidth = 1;
+        drawLaneTrack("blue");
+        ctx.strokeStyle = "rgba(255, 79, 163, 0.1)";
+        drawLaneTrack("pink");
+
+        ctx.font = `600 ${Math.max(9, 10 * scale)}px "Segoe UI", sans-serif`;
+        ctx.letterSpacing = "0.16em";
+        ctx.fillStyle = "rgba(119, 151, 205, 0.47)";
+        ctx.textAlign = "center";
+        ctx.fillText("BLUE ZONE", divider * 0.5, height - Math.max(23 * scale, 20));
+        ctx.fillText("PINK ZONE", divider * 1.5, height - Math.max(23 * scale, 20));
+      }
+
+      function drawLaneTrack(zone) {
+        const bounds = zoneBounds(zone);
+        const y = players.blue.y;
+        ctx.beginPath();
+        ctx.moveTo(bounds.left, y);
+        ctx.lineTo(bounds.right, y);
+        ctx.stroke();
+        const first = laneX(zone, 0);
+        const second = laneX(zone, 1);
+        ctx.beginPath();
+        ctx.moveTo(first, y - 22 * scale);
+        ctx.lineTo(first, y + 16 * scale);
+        ctx.moveTo(second, y - 22 * scale);
+        ctx.lineTo(second, y + 16 * scale);
+        ctx.stroke();
+      }
+
+      function drawItems() {
+        for (const item of items) {
+          if (item.type === "obstacle") drawObstacle(item);
+          else drawGem(item, item.type === "blueGem" ? COLORS.blue : COLORS.pink);
+        }
+      }
+
+      function drawObstacle(item) {
+        const s = item.size;
+        ctx.save();
+        ctx.translate(item.x, item.y);
+        ctx.rotate(item.rotation);
+        ctx.shadowColor = COLORS.red;
+        ctx.shadowBlur = 18 * scale;
+        ctx.fillStyle = "rgba(255, 45, 67, 0.16)";
+        ctx.fillRect(-s, -s, s * 2, s * 2);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = COLORS.red;
+        ctx.fillRect(-s * 0.72, -s * 0.72, s * 1.44, s * 1.44);
+        ctx.strokeStyle = COLORS.redLight;
+        ctx.lineWidth = Math.max(1.5, scale * 2);
+        ctx.strokeRect(-s * 0.72, -s * 0.72, s * 1.44, s * 1.44);
+        ctx.strokeStyle = "rgba(255, 218, 225, 0.8)";
+        ctx.lineWidth = Math.max(1, scale);
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.45, -s * 0.45);
+        ctx.lineTo(s * 0.45, s * 0.45);
+        ctx.moveTo(s * 0.45, -s * 0.45);
+        ctx.lineTo(-s * 0.45, s * 0.45);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawGem(item, color) {
+        const s = item.size;
+        ctx.save();
+        ctx.translate(item.x, item.y);
+        ctx.rotate(item.rotation);
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 22 * scale;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.22;
+        diamondPath(s * 1.35);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+        const gradient = ctx.createLinearGradient(-s, -s, s, s);
+        gradient.addColorStop(0, "#ffffff");
+        gradient.addColorStop(0.24, color);
+        gradient.addColorStop(1, color);
+        ctx.fillStyle = gradient;
+        diamondPath(s);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.86)";
+        ctx.lineWidth = Math.max(1, scale);
+        diamondPath(s);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function diamondPath(size) {
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size * 0.7, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size * 0.7, 0);
+        ctx.closePath();
+      }
+
+      function drawTrails() {
+        for (const trail of trails) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, trail.life / trail.maxLife) * 0.5;
+          ctx.fillStyle = trail.color;
+          ctx.shadowColor = trail.color;
+          ctx.shadowBlur = 12 * scale;
+          ctx.beginPath();
+          ctx.arc(trail.x, trail.y, trail.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawPlayer(player) {
+        const radius = Math.max(17 * scale, 17);
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        ctx.shadowColor = player.color;
+        ctx.shadowBlur = 28 * scale;
+        ctx.fillStyle = player.color;
+        ctx.globalAlpha = 0.22;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 1.75, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+        const gradient = ctx.createRadialGradient(-radius * 0.35, -radius * 0.4, radius * 0.08, 0, 0, radius);
+        gradient.addColorStop(0, "#ffffff");
+        gradient.addColorStop(0.16, player.color);
+        gradient.addColorStop(1, player.glow);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.78)";
+        ctx.lineWidth = Math.max(1, scale);
+        ctx.stroke();
+        ctx.globalAlpha = 0.65;
+        ctx.strokeStyle = player.color;
+        ctx.lineWidth = Math.max(1, scale * 1.5);
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 1.28, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawParticles() {
+        for (const particle of particles) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+          ctx.fillStyle = particle.color;
+          ctx.shadowColor = particle.color;
+          ctx.shadowBlur = 10 * scale;
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawHud() {
+        const pad = Math.max(20 * scale, 18);
+        const top = Math.max(26 * scale, 22);
+        ctx.textAlign = "left";
+        ctx.font = `800 ${Math.max(20, 27 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.white;
+        ctx.shadowColor = "rgba(97, 145, 255, 0.4)";
+        ctx.shadowBlur = 12 * scale;
+        ctx.fillText(String(score).padStart(5, "0"), pad, top + 31 * scale);
+        ctx.shadowBlur = 0;
+        ctx.font = `600 ${Math.max(9, 10 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText("SCORE", pad + 2, top + 47 * scale);
+
+        ctx.textAlign = "right";
+        ctx.font = `800 ${Math.max(17, 22 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.white;
+        ctx.fillText(String(highScore).padStart(5, "0"), width - pad, top + 31 * scale);
+        ctx.font = `600 ${Math.max(9, 10 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText("BEST", width - pad, top + 47 * scale);
+
+        if (state === "playing") {
+          ctx.textAlign = "center";
+          ctx.font = `600 ${Math.max(9, 10 * scale)}px "Segoe UI", sans-serif`;
+          ctx.fillStyle = "rgba(170, 191, 231, 0.46)";
+          ctx.fillText("TAP YOUR SIDE TO SWITCH LANES", width / 2, top + 27 * scale);
+        }
+      }
+
+      function drawStartScreen() {
+        const centerY = height * 0.42;
+        ctx.textAlign = "center";
+        ctx.font = `900 ${Math.max(35, 53 * scale)}px "Segoe UI", sans-serif`;
+        ctx.shadowColor = COLORS.blue;
+        ctx.shadowBlur = 18 * scale;
+        ctx.fillStyle = COLORS.white;
+        ctx.fillText("DODGE", width / 2, centerY);
+        ctx.shadowColor = COLORS.pink;
+        ctx.fillStyle = COLORS.pink;
+        ctx.fillText("& CATCH", width / 2, centerY + 53 * scale);
+        ctx.shadowBlur = 0;
+
+        ctx.font = `600 ${Math.max(11, 13 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText("CHANGE LANES  ·  COLLECT YOUR COLOR  ·  SURVIVE", width / 2, centerY + 98 * scale);
+
+        const pulse = 0.88 + Math.sin(performance.now() * 0.004) * 0.08;
+        ctx.globalAlpha = pulse;
+        ctx.font = `800 ${Math.max(14, 17 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.white;
+        ctx.shadowColor = COLORS.blue;
+        ctx.shadowBlur = 14 * scale;
+        ctx.fillText("TAP PARA EMPEZAR", width / 2, centerY + 161 * scale);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+
+        ctx.font = `500 ${Math.max(10, 11 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = "rgba(142, 158, 192, 0.64)";
+        ctx.fillText("← / A  BLUE", width * 0.28, height - 43 * scale);
+        ctx.fillText("PINK  D / →", width * 0.72, height - 43 * scale);
+      }
+
+      function drawGameOver() {
+        ctx.fillStyle = "rgba(5, 6, 16, 0.68)";
+        ctx.fillRect(-20, -20, width + 40, height + 40);
+        const centerY = height * 0.37;
+        ctx.textAlign = "center";
+        ctx.font = `900 ${Math.max(34, 50 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.redLight;
+        ctx.shadowColor = COLORS.red;
+        ctx.shadowBlur = 19 * scale;
+        ctx.fillText("GAME OVER", width / 2, centerY);
+        ctx.shadowBlur = 0;
+
+        ctx.font = `600 ${Math.max(11, 13 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText("RUN COMPLETE", width / 2, centerY + 32 * scale);
+
+        ctx.font = `900 ${Math.max(32, 45 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.white;
+        ctx.fillText(String(score).padStart(5, "0"), width / 2, centerY + 104 * scale);
+        ctx.font = `600 ${Math.max(10, 11 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText("SCORE", width / 2, centerY + 126 * scale);
+
+        const button = restartButtonRect();
+        const gradient = ctx.createLinearGradient(button.x, button.y, button.x + button.w, button.y);
+        gradient.addColorStop(0, COLORS.blueSoft);
+        gradient.addColorStop(1, COLORS.pinkSoft);
+        ctx.shadowColor = COLORS.blue;
+        ctx.shadowBlur = 22 * scale;
+        roundedRect(button.x, button.y, button.w, button.h, 12 * scale);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.font = `800 ${Math.max(13, 15 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = COLORS.white;
+        ctx.fillText("JUGAR DE NUEVO", width / 2, button.y + button.h * 0.62);
+        ctx.font = `500 ${Math.max(10, 11 * scale)}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = "rgba(171, 186, 220, 0.72)";
+        ctx.fillText("TAP O PULSA ESPACIO", width / 2, button.y + button.h + 30 * scale);
+      }
+
+      function roundedRect(x, y, w, h, radius) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, radius);
+      }
+
+      function frame(time) {
+        const dt = Math.min(0.035, (time - lastTime) / 1000 || 0);
+        lastTime = time;
+        update(dt);
+        draw(time);
+        animationId = requestAnimationFrame(frame);
+      }
+
+      window.addEventListener("resize", resize, { passive: true });
+      canvas.addEventListener("pointerdown", handlePointerDown, { passive: true });
+      canvas.addEventListener("pointerup", handlePointerUp, { passive: true });
+      window.addEventListener("keydown", handleKeyDown);
+
+      resize();
+      animationId = requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
