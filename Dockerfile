@@ -1,11 +1,13 @@
 FROM node:18-alpine
 WORKDIR /app
 
-# Copia los manifestos e instala las dependencias sin omitir ninguna
+# Copia los manifestos
 COPY package*.json ./
-RUN npm install
 
-# Copia el resto de archivos del proyecto
+# Fuerza la instalación limpia de dependencias
+RUN npm install --production=false --force
+
+# Copia el resto del código
 COPY . .
 
 EXPOSE 3000
