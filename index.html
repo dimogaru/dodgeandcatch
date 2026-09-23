@@ -81,6 +81,9 @@
       let elapsed = 0;
       let spawnTimer = 0;
       let shake = 0;
+      let combo = 1;
+      let comboStreak = 0;
+      let feverTimer = 0;
       let audioContext = null;
       let pointerStartX = 0;
       let pointerStartY = 0;
@@ -88,10 +91,11 @@
       const items = [];
       const particles = [];
       const trails = [];
+      const floatingTexts = [];
 
       const players = {
-        blue: { lane: 0, x: 0, y: 0, targetX: 0, color: COLORS.blue, glow: COLORS.blueSoft },
-        pink: { lane: 0, x: 0, y: 0, targetX: 0, color: COLORS.pink, glow: COLORS.pinkSoft }
+        blue: { lane: 0, x: 0, y: 0, targetX: 0, pop: 0, color: COLORS.blue, glow: COLORS.blueSoft },
+        pink: { lane: 0, x: 0, y: 0, targetX: 0, pop: 0, color: COLORS.pink, glow: COLORS.pinkSoft }
       };
 
       function readHighScore() {
@@ -159,11 +163,17 @@
         elapsed = 0;
         spawnTimer = 0.32;
         shake = 0;
+        combo = 1;
+        comboStreak = 0;
+        feverTimer = 0;
         items.length = 0;
         particles.length = 0;
         trails.length = 0;
+        floatingTexts.length = 0;
         players.blue.lane = 0;
         players.pink.lane = 0;
+        players.blue.pop = 0;
+        players.pink.pop = 0;
         layoutPlayers();
         playTone(330, 0.08, "sine", 0.045);
         playTone(660, 0.1, "sine", 0.04, 0.05);
@@ -190,6 +200,7 @@
         const player = players[zone];
         player.lane = player.lane === 0 ? 1 : 0;
         player.targetX = laneX(zone, player.lane);
+        player.pop = 1;
         burst(player.x, player.y, player.color, 8);
         playTone(zone === "blue" ? 500 : 620, 0.07, "triangle", 0.032);
       }
@@ -266,6 +277,22 @@
         playTone(base * 1.5, 0.18, "sine", 0.04, 0.055);
       }
 
+      function playError() {
+        playTone(145, 0.18, "sawtooth", 0.055);
+        playTone(72, 0.27, "triangle", 0.042, 0.08);
+      }
+
+      function playFever() {
+        playTone(430, 0.12, "triangle", 0.05);
+        playTone(645, 0.16, "sine", 0.05, 0.08);
+        playTone(860, 0.22, "sine", 0.042, 0.16);
+      }
+
+      function playShieldHit() {
+        playTone(230, 0.08, "square", 0.035);
+        playTone(520, 0.12, "triangle", 0.032, 0.045);
+      }
+
       function playImpact() {
         if (!audioContext) return;
         const now = audioContext.currentTime;
@@ -287,15 +314,18 @@
         const zone = blueSide ? "blue" : "pink";
         const lane = Math.random() < 0.5 ? 0 : 1;
         const obstacleChance = Math.min(0.63, 0.39 + elapsed * 0.006);
-        const type = Math.random() < obstacleChance ? "obstacle" : (Math.random() < 0.5 ? "blueGem" : "pinkGem");
+        const roll = Math.random();
+        const type = roll < 0.035
+          ? "goldenGem"
+          : (roll < obstacleChance + 0.035 ? "obstacle" : (Math.random() < 0.5 ? "blueGem" : "pinkGem"));
         items.push({
           zone,
           lane,
           type,
           x: laneX(zone, lane),
           y: -32 * scale,
-          size: type === "obstacle" ? 22 * scale : 16 * scale,
-          speed: (210 + Math.min(150, elapsed * 4.5) + Math.random() * 40) * scale,
+          size: type === "obstacle" ? 22 * scale : type === "goldenGem" ? 19 * scale : 16 * scale,
+          speed: (210 + Math.min(150, elapsed * 4.5) + Math.min(135, score * 0.08) + Math.random() * 40) * scale,
           rotation: Math.random() * Math.PI,
           spin: (Math.random() - 0.5) * 3.4
         });
@@ -308,6 +338,10 @@
         }
 
         elapsed += dt;
+        feverTimer = Math.max(0, feverTimer - dt);
+        if (feverTimer > 0) {
+          shake = Math.max(shake, 2.2 * scale);
+        }
         spawnTimer -= dt;
         const interval = Math.max(0.34, 0.78 - elapsed * 0.006);
         if (spawnTimer <= 0) {
@@ -318,6 +352,7 @@
         for (const player of Object.values(players)) {
           const previousX = player.x;
           player.x += (player.targetX - player.x) * Math.min(1, dt * 13);
+          player.pop = Math.max(0, player.pop - dt * 5.8);
           if (Math.abs(player.x - previousX) > 0.2) {
             trails.push({
               x: player.x,
@@ -341,21 +376,49 @@
           }
           if (intersects(item, player)) {
             if (item.type === "obstacle") {
+              if (feverTimer > 0) {
+                score += 200;
+                addFloatingText(item.x, item.y, "+200", "#ffe36e", 1.15);
+                burst(item.x, item.y, "#ffd84a", 18);
+                playShieldHit();
+                items.splice(index, 1);
+                continue;
+              }
               endGame();
               return;
             }
+            if (item.type === "goldenGem") {
+              feverTimer = 3;
+              shake = Math.max(shake, 4 * scale);
+              addFloatingText(item.x, item.y, "FEVER / SHIELD", "#ffe36e", 1.25);
+              burst(item.x, item.y, "#ffd84a", 24);
+              playFever();
+              items.splice(index, 1);
+              continue;
+            }
             if ((item.type === "blueGem" && item.zone === "blue") ||
                 (item.type === "pinkGem" && item.zone === "pink")) {
-              score += 100;
+              comboStreak += 1;
+              combo = Math.min(4, comboStreak);
+              const points = 100 * combo;
+              score += points;
+              addFloatingText(item.x, item.y, `+${points}`, item.type === "blueGem" ? COLORS.blue : COLORS.pink);
+              if (combo > 1) addFloatingText(item.x, item.y - 22 * scale, `COMBO x${combo}`, "#f6f7ff", 0.88);
               burst(item.x, item.y, item.type === "blueGem" ? COLORS.blue : COLORS.pink, 14);
               playCollect(item.zone);
             } else {
-              burst(item.x, item.y, item.type === "blueGem" ? COLORS.blue : COLORS.pink, 4);
+              score = Math.max(0, score - 150);
+              comboStreak = 0;
+              combo = 1;
+              addFloatingText(item.x, item.y, "-150", COLORS.redLight, 1.08);
+              burst(item.x, item.y, COLORS.red, 9);
+              playError();
             }
             items.splice(index, 1);
           }
         }
         updateParticles(dt);
+        updateFloatingTexts(dt);
         shake *= Math.max(0, 1 - dt * 9);
       }
 
@@ -364,6 +427,7 @@
           player.x += (player.targetX - player.x) * Math.min(1, dt * 10);
         }
         updateParticles(dt);
+        updateFloatingTexts(dt);
         shake *= Math.max(0, 1 - dt * 9);
       }
 
@@ -388,6 +452,28 @@
             maxLife: 0.85,
             size: (1.5 + Math.random() * 3.8) * scale
           });
+        }
+      }
+
+      function addFloatingText(x, y, text, color, sizeMultiplier = 1) {
+        floatingTexts.push({
+          x,
+          y,
+          text,
+          color,
+          life: 1.05,
+          maxLife: 1.05,
+          velocity: (32 + Math.random() * 12) * scale,
+          size: Math.max(13, 16 * scale) * sizeMultiplier
+        });
+      }
+
+      function updateFloatingTexts(dt) {
+        for (let index = floatingTexts.length - 1; index >= 0; index--) {
+          const floatingText = floatingTexts[index];
+          floatingText.life -= dt;
+          floatingText.y -= floatingText.velocity * dt;
+          if (floatingText.life <= 0) floatingTexts.splice(index, 1);
         }
       }
 
@@ -420,6 +506,7 @@
         drawPlayer(players.blue);
         drawPlayer(players.pink);
         drawParticles();
+        drawFloatingTexts();
         drawHud();
         if (state === "ready") drawStartScreen();
         if (state === "gameover") drawGameOver();
@@ -517,6 +604,7 @@
       function drawItems() {
         for (const item of items) {
           if (item.type === "obstacle") drawObstacle(item);
+          else if (item.type === "goldenGem") drawGoldenGem(item);
           else drawGem(item, item.type === "blueGem" ? COLORS.blue : COLORS.pink);
         }
       }
@@ -574,6 +662,37 @@
         ctx.restore();
       }
 
+      function drawGoldenGem(item) {
+        const s = item.size;
+        const pulse = 1 + Math.sin(performance.now() * 0.008 + item.rotation) * 0.08;
+        ctx.save();
+        ctx.translate(item.x, item.y);
+        ctx.rotate(item.rotation);
+        ctx.scale(pulse, pulse);
+        ctx.shadowColor = "#ffd84a";
+        ctx.shadowBlur = 30 * scale;
+        ctx.fillStyle = "rgba(255, 216, 74, 0.24)";
+        diamondPath(s * 1.55);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffd84a";
+        diamondPath(s * 1.04);
+        ctx.fill();
+        const gradient = ctx.createLinearGradient(-s, -s, s, s);
+        gradient.addColorStop(0, "#fffce0");
+        gradient.addColorStop(0.28, "#ffe875");
+        gradient.addColorStop(0.62, "#ffb928");
+        gradient.addColorStop(1, "#f28a1e");
+        ctx.fillStyle = gradient;
+        diamondPath(s * 0.78);
+        ctx.fill();
+        ctx.strokeStyle = "#fff7bc";
+        ctx.lineWidth = Math.max(1.2, scale * 1.2);
+        diamondPath(s * 0.78);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       function diamondPath(size) {
         ctx.beginPath();
         ctx.moveTo(0, -size);
@@ -599,11 +718,16 @@
 
       function drawPlayer(player) {
         const radius = Math.max(17 * scale, 17);
+        const popScale = 1 + Math.sin((1 - player.pop) * Math.PI) * 0.24;
+        const feverActive = feverTimer > 0;
+        const playerColor = feverActive ? "#ffd84a" : player.color;
+        const playerGlow = feverActive ? "#ff9f1c" : player.glow;
         ctx.save();
         ctx.translate(player.x, player.y);
-        ctx.shadowColor = player.color;
-        ctx.shadowBlur = 28 * scale;
-        ctx.fillStyle = player.color;
+        ctx.scale(popScale, popScale);
+        ctx.shadowColor = playerColor;
+        ctx.shadowBlur = (feverActive ? 38 : 28) * scale;
+        ctx.fillStyle = playerColor;
         ctx.globalAlpha = 0.22;
         ctx.beginPath();
         ctx.arc(0, 0, radius * 1.75, 0, Math.PI * 2);
@@ -612,8 +736,8 @@
         ctx.shadowBlur = 0;
         const gradient = ctx.createRadialGradient(-radius * 0.35, -radius * 0.4, radius * 0.08, 0, 0, radius);
         gradient.addColorStop(0, "#ffffff");
-        gradient.addColorStop(0.16, player.color);
-        gradient.addColorStop(1, player.glow);
+        gradient.addColorStop(0.16, playerColor);
+        gradient.addColorStop(1, playerGlow);
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(0, 0, radius, 0, Math.PI * 2);
@@ -622,11 +746,21 @@
         ctx.lineWidth = Math.max(1, scale);
         ctx.stroke();
         ctx.globalAlpha = 0.65;
-        ctx.strokeStyle = player.color;
+        ctx.strokeStyle = playerColor;
         ctx.lineWidth = Math.max(1, scale * 1.5);
         ctx.beginPath();
         ctx.arc(0, 0, radius * 1.28, 0, Math.PI * 2);
         ctx.stroke();
+        if (feverActive) {
+          ctx.globalAlpha = 0.88;
+          ctx.strokeStyle = "#fff3a8";
+          ctx.lineWidth = Math.max(1.5, scale * 2);
+          ctx.setLineDash([4 * scale, 3 * scale]);
+          ctx.beginPath();
+          ctx.arc(0, 0, radius * 1.52, -Math.PI / 2, Math.PI * 1.5);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
         ctx.restore();
       }
 
@@ -642,6 +776,22 @@
           ctx.fill();
           ctx.restore();
         }
+      }
+
+      function drawFloatingTexts() {
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        for (const floatingText of floatingTexts) {
+          const alpha = Math.min(1, floatingText.life / 0.18, (floatingText.life / floatingText.maxLife) * 1.35);
+          ctx.globalAlpha = alpha;
+          ctx.font = `900 ${floatingText.size}px "Segoe UI", sans-serif`;
+          ctx.fillStyle = floatingText.color;
+          ctx.shadowColor = floatingText.color;
+          ctx.shadowBlur = 13 * scale;
+          ctx.fillText(floatingText.text, floatingText.x, floatingText.y);
+        }
+        ctx.restore();
       }
 
       function drawHud() {
@@ -671,6 +821,30 @@
           ctx.font = `600 ${Math.max(9, 10 * scale)}px "Segoe UI", sans-serif`;
           ctx.fillStyle = "rgba(170, 191, 231, 0.46)";
           ctx.fillText("TAP YOUR SIDE TO SWITCH LANES", width / 2, top + 27 * scale);
+
+          const comboLabel = `COMBO x${combo}`;
+          ctx.font = `800 ${Math.max(12, 14 * scale)}px "Segoe UI", sans-serif`;
+          ctx.fillStyle = combo > 1 ? "#f6f7ff" : "rgba(170, 191, 231, 0.7)";
+          ctx.shadowColor = combo > 1 ? COLORS.blue : "transparent";
+          ctx.shadowBlur = combo > 1 ? 10 * scale : 0;
+          ctx.fillText(comboLabel, width / 2, top + 52 * scale);
+          ctx.shadowBlur = 0;
+
+          if (feverTimer > 0) {
+            const meterW = Math.min(164 * scale, width * 0.38);
+            const meterH = Math.max(5 * scale, 4);
+            const meterX = (width - meterW) / 2;
+            const meterY = top + 65 * scale;
+            ctx.font = `900 ${Math.max(10, 11 * scale)}px "Segoe UI", sans-serif`;
+            ctx.fillStyle = "#ffe36e";
+            ctx.fillText(`FEVER / SHIELD  ${feverTimer.toFixed(1)}s`, width / 2, meterY + 14 * scale);
+            ctx.fillStyle = "rgba(255, 224, 105, 0.2)";
+            roundedRect(meterX, meterY + 22 * scale, meterW, meterH, meterH / 2);
+            ctx.fill();
+            ctx.fillStyle = "#ffd84a";
+            roundedRect(meterX, meterY + 22 * scale, meterW * Math.min(1, feverTimer / 3), meterH, meterH / 2);
+            ctx.fill();
+          }
         }
       }
 
