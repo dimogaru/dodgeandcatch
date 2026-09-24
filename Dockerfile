@@ -1,14 +1,18 @@
 FROM node:18-alpine
+
 WORKDIR /app
 
-# Copia los manifestos
+# Copiamos los archivos de manifiesto
 COPY package*.json ./
 
-# Fuerza la instalación limpia de dependencias
-RUN npm install --production=false --force
+# Instalamos dependencias omitiendo auditorías pesadas que cuelgan el proceso de build
+RUN npm install --no-audit --no-fund
 
-# Copia el resto del código
+# Copiamos todo el resto del código
 COPY . .
 
+# Exponemos el puerto
 EXPOSE 3000
-CMD ["npm", "start"]
+
+# Comando de inicio
+CMD ["node", "server.js"]
