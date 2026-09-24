@@ -5,11 +5,16 @@ const { Pool } = require("pg");
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 5000
 });
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "8kb" }));
+
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Dodge & Catch server listening on 0.0.0.0:${PORT}`);
+});
 
 const publicFile = (fileName) => path.join(__dirname, fileName);
 let databaseReady = false;
@@ -129,10 +134,6 @@ function normalizeNickname(value) {
     .trim()
     .slice(0, 10);
 }
-
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Dodge & Catch server listening on 0.0.0.0:${PORT}`);
-});
 
 async function shutdown(signal) {
   console.log(`${signal} received, shutting down`);
