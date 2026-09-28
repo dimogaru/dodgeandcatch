@@ -11,6 +11,7 @@
   <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="icon" href="data:,">
   <title>Dodge & Catch — Neon Run</title>
+  <script async id="adsense-script" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -284,6 +285,96 @@
       font: 600 0.64rem "Segoe UI", sans-serif;
       letter-spacing: 0.07em;
       text-align: center;
+    }
+
+    .ad-interstitial-container {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+      background: rgba(3, 5, 16, 0.9);
+      backdrop-filter: blur(14px) saturate(1.08);
+      -webkit-backdrop-filter: blur(14px) saturate(1.08);
+    }
+
+    .ad-interstitial-container[hidden] {
+      display: none;
+    }
+
+    .ad-interstitial-card {
+      position: relative;
+      width: min(520px, 100%);
+      padding: clamp(24px, 5vw, 38px);
+      border: 1px solid rgba(91, 196, 255, 0.55);
+      border-radius: 24px;
+      background:
+        linear-gradient(145deg, rgba(17, 34, 70, 0.97), rgba(32, 10, 45, 0.97)),
+        #0a0a14;
+      box-shadow: 0 0 42px rgba(49, 170, 255, 0.22), 0 24px 90px rgba(0, 0, 0, 0.58);
+      text-align: center;
+    }
+
+    .ad-kicker {
+      margin: 0 0 9px;
+      color: #ffd84a;
+      font: 800 0.62rem "Segoe UI", sans-serif;
+      letter-spacing: 0.2em;
+    }
+
+    .ad-title {
+      margin: 0;
+      color: #f6f9ff;
+      font: 900 clamp(1.15rem, 4vw, 1.5rem) "Segoe UI", sans-serif;
+      letter-spacing: 0.1em;
+      text-shadow: 0 0 18px rgba(87, 193, 255, 0.48);
+    }
+
+    .ad-caption {
+      margin: 9px 0 18px;
+      color: #a3b3d1;
+      font: 600 0.72rem "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    .ad-slot {
+      display: grid;
+      place-items: center;
+      min-height: 180px;
+      overflow: hidden;
+      border: 1px solid rgba(128, 161, 218, 0.18);
+      border-radius: 14px;
+      background: rgba(3, 8, 23, 0.4);
+    }
+
+    .ad-slot ins.adsbygoogle {
+      display: block;
+      width: 100%;
+      min-height: 180px;
+    }
+
+    .ad-continue {
+      min-width: 180px;
+      margin-top: 20px;
+      padding: 13px 22px;
+      border: 1px solid rgba(88, 199, 255, 0.65);
+      border-radius: 999px;
+      color: #f5f8ff;
+      background: rgba(17, 75, 143, 0.78);
+      box-shadow: 0 0 20px rgba(53, 162, 255, 0.22);
+      font: 900 0.68rem "Segoe UI", sans-serif;
+      letter-spacing: 0.12em;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .ad-continue:hover,
+    .ad-continue:focus-visible {
+      outline: 2px solid rgba(136, 222, 255, 0.72);
+      outline-offset: 3px;
+      background: rgba(23, 99, 176, 0.9);
     }
 
     .modal-backdrop {
@@ -657,6 +748,17 @@
     </section>
   </div>
 
+  <div id="ad-interstitial-container" class="ad-interstitial-container" hidden>
+    <section class="ad-interstitial-card" role="dialog" aria-modal="true" aria-labelledby="adTitle" aria-describedby="adCaption">
+      <p class="ad-kicker">PUBLICIDAD</p>
+      <h2 id="adTitle" class="ad-title">UNA PAUSA ANTES DE LA SIGUIENTE PARTIDA</h2>
+      <p id="adCaption" class="ad-caption">Este anuncio ayuda a mantener Dodge &amp; Catch disponible.</p>
+      <div id="adSlotContainer" class="ad-slot"></div>
+      <p id="adStatus" class="modal-status" aria-live="polite">CARGANDO ANUNCIO...</p>
+      <button id="adContinueButton" class="ad-continue" type="button" aria-label="Cerrar anuncio y volver a la partida">CONTINUAR</button>
+    </section>
+  </div>
+
   <script>
     (() => {
       "use strict";
@@ -678,6 +780,18 @@
       const nicknameStatus = document.getElementById("nicknameStatus");
       const saveRankingButton = document.getElementById("saveRankingButton");
       const skipRankingButton = document.getElementById("skipRankingButton");
+      const adInterstitialContainer = document.getElementById("ad-interstitial-container");
+      const adSlotContainer = document.getElementById("adSlotContainer");
+      const adStatus = document.getElementById("adStatus");
+      const adContinueButton = document.getElementById("adContinueButton");
+      const adsenseScript = document.getElementById("adsense-script");
+      const ADSENSE_CLIENT_ID = new URL(adsenseScript.src).searchParams.get("client");
+      const ADSENSE_SLOT_ID = "0000000000";
+      const ADSENSE_PRODUCTION_HOST = "dodge.dimogaru.es";
+
+      const AD_FREQUENCY_STORAGE_KEY = "dodge-catch-ad-frequency-v1";
+      const AD_COOLDOWN_MS = 8 * 60 * 1000;
+      const AD_LOAD_TIMEOUT_MS = 10 * 1000;
 
       const COLORS = {
         bg: "#080a16",
@@ -715,6 +829,13 @@
       let pendingRankingScore = null;
       let deferredInstallPrompt = null;
       let audioContext = null;
+      let isFirstGameOver = true;
+      let lastAdTimestamp = 0;
+      let adFallbackTimer = 0;
+      let adLoadObserver = null;
+      let adRequestResolved = false;
+      let adsenseScriptFailed = false;
+      let adCompletionCallback = null;
       let pointerStartX = 0;
       let pointerStartY = 0;
 
@@ -743,6 +864,124 @@
           // Storage may be unavailable in private browsing; the session score still works.
         }
       }
+
+      function restoreAdFrequencyState() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(AD_FREQUENCY_STORAGE_KEY) || "null");
+          if (!saved || typeof saved !== "object") return;
+          if (typeof saved.isFirstGameOver === "boolean") {
+            isFirstGameOver = saved.isFirstGameOver;
+          }
+          if (Number.isFinite(saved.lastAdTimestamp) && saved.lastAdTimestamp >= 0) {
+            lastAdTimestamp = saved.lastAdTimestamp;
+          }
+        } catch (error) {
+          // Keep the in-memory frequency limits if browser storage is unavailable.
+        }
+      }
+
+      function persistAdFrequencyState() {
+        try {
+          localStorage.setItem(AD_FREQUENCY_STORAGE_KEY, JSON.stringify({
+            isFirstGameOver,
+            lastAdTimestamp
+          }));
+        } catch (error) {
+          // The ad cooldown still applies for the current page session.
+        }
+      }
+
+      function shouldShowAd() {
+        const now = Date.now();
+        if (isFirstGameOver) {
+          isFirstGameOver = false;
+          lastAdTimestamp = now;
+          persistAdFrequencyState();
+          return true;
+        }
+        if (now - lastAdTimestamp >= AD_COOLDOWN_MS) {
+          lastAdTimestamp = now;
+          persistAdFrequencyState();
+          return true;
+        }
+        return false;
+      }
+
+      function finishAdInterstitial(reason = "closed") {
+        if (adInterstitialContainer.hidden) return;
+        adInterstitialContainer.hidden = true;
+        window.clearTimeout(adFallbackTimer);
+        adFallbackTimer = 0;
+        if (adLoadObserver) {
+          adLoadObserver.disconnect();
+          adLoadObserver = null;
+        }
+        adSlotContainer.replaceChildren();
+        const callback = adCompletionCallback;
+        adCompletionCallback = null;
+        if (audioContext && audioContext.state !== "closed") {
+          audioContext.resume().catch(() => {});
+        }
+        if (document.activeElement === adContinueButton) adContinueButton.blur();
+        if (callback) callback(reason);
+      }
+
+      function showAdInterstitial(onComplete) {
+        adCompletionCallback = typeof onComplete === "function" ? onComplete : null;
+        if (adsenseScriptFailed) {
+          const callback = adCompletionCallback;
+          adCompletionCallback = null;
+          if (callback) callback("script-error");
+          return;
+        }
+        adRequestResolved = false;
+        adStatus.textContent = "CARGANDO ANUNCIO...";
+
+        const adElement = document.createElement("ins");
+        adElement.className = "adsbygoogle";
+        adElement.style.display = "block";
+        adElement.dataset.adClient = ADSENSE_CLIENT_ID;
+        adElement.dataset.adSlot = ADSENSE_SLOT_ID;
+        adElement.dataset.adFormat = "auto";
+        adElement.dataset.fullWidthResponsive = "true";
+        adSlotContainer.replaceChildren(adElement);
+
+        adInterstitialContainer.hidden = false;
+        adContinueButton.focus();
+        if (audioContext && audioContext.state === "running") {
+          audioContext.suspend().catch(() => {});
+        }
+
+        adLoadObserver = new MutationObserver(() => {
+          const status = adElement.getAttribute("data-ad-status");
+          if (status === "filled") {
+            adRequestResolved = true;
+            window.clearTimeout(adFallbackTimer);
+            adFallbackTimer = 0;
+            adStatus.textContent = "ANUNCIO DISPONIBLE · CONTINÚA CUANDO QUIERAS";
+          } else if (status === "unfilled") {
+            adRequestResolved = true;
+            finishAdInterstitial("unfilled");
+          }
+        });
+        adLoadObserver.observe(adElement, {
+          attributes: true,
+          attributeFilter: ["data-ad-status"]
+        });
+
+        adFallbackTimer = window.setTimeout(() => {
+          if (!adRequestResolved) finishAdInterstitial("load-timeout");
+        }, AD_LOAD_TIMEOUT_MS);
+
+        try {
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+        } catch (error) {
+          console.warn("AdSense unavailable; returning to the game.", error);
+          finishAdInterstitial("load-error");
+        }
+      }
+
+      restoreAdFrequencyState();
 
       function normalizeRanking(entries) {
         if (!Array.isArray(entries)) return [];
@@ -960,6 +1199,11 @@
         playImpact();
         syncOverlayState();
         checkRankingEligibility();
+        if (window.location.hostname === ADSENSE_PRODUCTION_HOST && shouldShowAd()) {
+          showAdInterstitial(() => {
+            syncOverlayState();
+          });
+        }
       }
 
       function toggleLane(zone) {
@@ -998,6 +1242,10 @@
 
       function handleKeyDown(event) {
         const key = event.key.toLowerCase();
+        if (!adInterstitialContainer.hidden) {
+          if (key === "escape") finishAdInterstitial("escape");
+          return;
+        }
         if (key === "escape") {
           closeModal(rankingModal);
           closeModal(nicknameModal);
@@ -1835,6 +2083,12 @@
       });
       rankingModal.addEventListener("click", (event) => {
         if (event.target === rankingModal) closeModal(rankingModal);
+      });
+      adContinueButton.addEventListener("click", () => finishAdInterstitial("dismissed"));
+      adsenseScript.addEventListener("error", () => {
+        adsenseScriptFailed = true;
+        adRequestResolved = true;
+        if (!adInterstitialContainer.hidden) finishAdInterstitial("script-error");
       });
       installButton.addEventListener("click", async () => {
         if (!deferredInstallPrompt) {

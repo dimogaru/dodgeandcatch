@@ -1,5 +1,12 @@
 const CACHE_NAME = "dodge-catch-shell-v1";
 const APP_SHELL = ["/", "/index.html", "/manifest.json", "/icon.svg"];
+const GOOGLE_AD_HOSTS = ["googlesyndication.com", "doubleclick.net"];
+
+function isGoogleAdsHost(hostname) {
+  return GOOGLE_AD_HOSTS.some(
+    (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
+  );
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -25,7 +32,12 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) {
+  if (
+    request.method !== "GET" ||
+    isGoogleAdsHost(url.hostname) ||
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith("/api/")
+  ) {
     return;
   }
 
