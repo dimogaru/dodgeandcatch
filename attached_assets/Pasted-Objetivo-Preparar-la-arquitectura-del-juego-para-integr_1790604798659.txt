@@ -1,0 +1,47 @@
+Objetivo: Preparar la arquitectura del juego para integrar publicidad de Google AdSense / Ad Exchange de forma no intrusiva, ajustada a la URL de producción [https://dodge.dimogaru.es/](https://dodge.dimogaru.es/) y respetando una regla estricta de tiempo.
+
+Frecuencia y reglas de anuncios requeridas:
+
+Primera partida: Mostrar 1 anuncio (interstitial/vídeo) en la pantalla de Game Over al finalizar la primera partida.
+
+Partidas posteriores: NO mostrar anuncios tras cada Game Over. Se debe activar un temporizador interno de 8 minutos. Solo se volverá a mostrar un anuncio al perder si han transcurrido al menos 8 minutos completos desde el último anuncio mostrado.
+
+Instrucciones de implementación paso a paso:
+
+Script y Estructura en index.html:
+
+Inserta en el <head> de index.html el script oficial de Google AdSense utilizando un placeholder para la propiedad:
+
+HTML
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+Añade el contenedor modal/overlay #ad-interstitial-container para renderizar el anuncio al perder la partida.
+
+Lógica de Control de Frecuencia (ads.js o módulo de anuncios):
+
+Define una estructura de control con dos variables de estado:
+
+isFirstGameOver = true
+
+lastAdTimestamp = 0
+
+COOLDOWN_MS = 8 * 60 * 1000 (8 minutos en milisegundos).
+
+Implementa la función shouldShowAd():
+
+Si isFirstGameOver es true, marca isFirstGameOver = false, guarda el lastAdTimestamp actual (Date.now()) y retorna true.
+
+Si no, comprueba si (Date.now() - lastAdTimestamp) >= COOLDOWN_MS. Si se cumple, actualiza lastAdTimestamp y retorna true.
+
+En caso contrario, retorna false.
+
+Integración con el Flujo de Game Over:
+
+En la función de fin de partida, invoca la comprobación. Si shouldShowAd() devuelve true, pausa la música/efectos del juego y muestra el anuncio.
+
+Garantiza que, tanto si el anuncio se cierra correctamente como si falla la carga o es bloqueado por un adblocker, el juego continúe con normalidad y permita reiniciar la partida mediante una función callback de respaldo.
+
+Exclusiones en Service Worker y CSP (sw.js):
+
+Asegúrate de que sw.js no intente almacenar en caché las solicitudes hacia dominios de Google Ads (*.googlesyndication.com, *.doubleclick.net).
+
+Por favor, aplica estos cambios manteniendo intacto el diseño, la URL de producción, el ranking y la lógica de servidor de server.js.
