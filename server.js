@@ -11,6 +11,14 @@ const pool = new Pool({
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "8kb" }));
+app.use(
+  "/vendor/admob",
+  express.static(path.join(__dirname, "node_modules/@capacitor-community/admob/dist/esm"))
+);
+app.use(
+  "/vendor/capacitor",
+  express.static(path.join(__dirname, "node_modules/@capacitor/core/dist"))
+);
 
 const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Dodge & Catch server listening on 0.0.0.0:${PORT}`);

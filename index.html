@@ -10,6 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="icon" href="data:,">
+  <script type="importmap">
+    {
+      "imports": {
+        "@capacitor-community/admob": "/vendor/admob/index.js",
+        "@capacitor/core": "/vendor/capacitor/index.js"
+      }
+    }
+  </script>
   <title>Dodge & Catch — Neon Run</title>
   <script async id="adsense-script" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
   <style>
@@ -759,7 +767,10 @@
     </section>
   </div>
 
-  <script>
+  <script type="module">
+    import { AdMob } from "@capacitor-community/admob";
+    import { Capacitor } from "@capacitor/core";
+
     (() => {
       "use strict";
 
@@ -788,6 +799,8 @@
       const ADSENSE_CLIENT_ID = new URL(adsenseScript.src).searchParams.get("client");
       const ADSENSE_SLOT_ID = "0000000000";
       const ADSENSE_PRODUCTION_HOST = "dodge.dimogaru.es";
+      const ADMOB_INTERSTITIAL_ID = "ca-app-pub-9984763727647656/454334510";
+      let adMobReady = false;
 
       const AD_FREQUENCY_STORAGE_KEY = "dodge-catch-ad-frequency-v1";
       const AD_COOLDOWN_MS = 8 * 60 * 1000;
@@ -935,7 +948,47 @@
         if (callback) callback(reason);
       }
 
-      function showAdInterstitial(onComplete) {
+      function isNativeCapacitorPlatform() {
+        try {
+          return Capacitor.isNativePlatform();
+        } catch (error) {
+          return false;
+        }
+      }
+
+      async function initializeAdMob() {
+        try {
+          if (!isNativeCapacitorPlatform()) return false;
+          await AdMob.initialize();
+          adMobReady = true;
+          return true;
+        } catch (error) {
+          adMobReady = false;
+          console.warn("AdMob initialization unavailable; continuing without native ads.", error);
+          return false;
+        }
+      }
+
+      async function showAdInterstitial(onComplete) {
+        if (isNativeCapacitorPlatform()) {
+          try {
+            if (!adMobReady && !(await initializeAdMob())) {
+              if (onComplete) onComplete("admob-unavailable");
+              return;
+            }
+            await AdMob.prepareInterstitial({
+              adId: ADMOB_INTERSTITIAL_ID,
+              isTesting: false
+            });
+            await AdMob.showInterstitial();
+            if (onComplete) onComplete("admob-dismissed");
+          } catch (error) {
+            console.warn("AdMob interstitial unavailable; returning to the game.", error);
+            if (onComplete) onComplete("admob-error");
+          }
+          return;
+        }
+
         adCompletionCallback = typeof onComplete === "function" ? onComplete : null;
         if (adsenseScriptFailed) {
           const callback = adCompletionCallback;
@@ -990,6 +1043,7 @@
         }
       }
 
+      initializeAdMob();
       restoreAdFrequencyState();
 
       function normalizeRanking(entries) {
@@ -1250,7 +1304,10 @@
           if (state !== "gameover") return;
           gameOverTransition = false;
           gameOverTransitionTimer = 0;
-          if (window.location.hostname === ADSENSE_PRODUCTION_HOST) {
+          if (
+            isNativeCapacitorPlatform() ||
+            window.location.hostname === ADSENSE_PRODUCTION_HOST
+          ) {
             gameOverAdPending = shouldShowAd();
           }
           checkRankingEligibility();
