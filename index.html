@@ -831,6 +831,10 @@
       let audioContext = null;
       let isFirstGameOver = true;
       let lastAdTimestamp = 0;
+      let gameOverTransition = false;
+      let gameOverTransitionTimer = 0;
+      let rankingCheckPending = false;
+      let gameOverAdPending = false;
       let adFallbackTimer = 0;
       let adLoadObserver = null;
       let adRequestResolved = false;
@@ -838,6 +842,7 @@
       let adCompletionCallback = null;
       let pointerStartX = 0;
       let pointerStartY = 0;
+      let ignorePointerUntilRelease = false;
 
       const items = [];
       const particles = [];
@@ -1003,13 +1008,21 @@
           rankingLoaded = true;
           renderRanking();
           rankingStatus.textContent = `${globalRanking.length} MARCAS REGISTRADAS`;
-          if (showPrompt && pendingRankingScore !== null && qualifiesForRanking(pendingRankingScore)) {
-            openNicknameModal();
+          if (showPrompt) {
+            rankingCheckPending = false;
+            if (pendingRankingScore !== null && qualifiesForRanking(pendingRankingScore)) {
+              openNicknameModal();
+            }
+            maybeShowPendingGameOverAd();
           }
         } catch (error) {
           rankingLoaded = false;
           rankingStatus.textContent = "RANKING NO DISPONIBLE · INTÉNTALO DE NUEVO";
-          if (showPrompt) nicknameStatus.textContent = "No se pudo conectar con el ranking global.";
+          if (showPrompt) {
+            rankingCheckPending = false;
+            nicknameStatus.textContent = "No se pudo conectar con el ranking global.";
+            maybeShowPendingGameOverAd();
+          }
         }
       }
 
@@ -1054,6 +1067,22 @@
 
       function closeModal(modal) {
         modal.hidden = true;
+      }
+
+      function maybeShowPendingGameOverAd() {
+        if (
+          !gameOverAdPending ||
+          state !== "gameover" ||
+          gameOverTransition ||
+          rankingCheckPending ||
+          !nicknameModal.hidden ||
+          !rankingModal.hidden ||
+          !adInterstitialContainer.hidden
+        ) {
+          return;
+        }
+        gameOverAdPending = false;
+        showAdInterstitial(() => syncOverlayState());
       }
 
       function hideWelcomeScreen() {
@@ -1104,8 +1133,11 @@
 
       function checkRankingEligibility() {
         pendingRankingScore = score;
+        rankingCheckPending = true;
         if (rankingLoaded) {
           if (qualifiesForRanking(score)) openNicknameModal();
+          rankingCheckPending = false;
+          maybeShowPendingGameOverAd();
           return;
         }
         fetchRanking(true);
@@ -1159,6 +1191,12 @@
 
       function startGame() {
         ensureAudio();
+        window.clearTimeout(gameOverTransitionTimer);
+        gameOverTransitionTimer = 0;
+        gameOverTransition = false;
+        rankingCheckPending = false;
+        gameOverAdPending = false;
+        ignorePointerUntilRelease = false;
         hideWelcomeScreen();
         state = "playing";
         score = 0;
@@ -1198,21 +1236,26 @@
         burst(impactX, impactY, "#ffd1d5", 10);
         playImpact();
         syncOverlayState();
-        checkRankingEligibility();
-        if (window.location.hostname === ADSENSE_PRODUCTION_HOST && shouldShowAd()) {
-          showAdInterstitial(() => {
-            syncOverlayState();
-          });
-        }
+        gameOverTransition = true;
+        rankingCheckPending = false;
+        gameOverTransitionTimer = window.setTimeout(() => {
+          if (state !== "gameover") return;
+          gameOverTransition = false;
+          gameOverTransitionTimer = 0;
+          if (window.location.hostname === ADSENSE_PRODUCTION_HOST) {
+            gameOverAdPending = shouldShowAd();
+          }
+          checkRankingEligibility();
+        }, 2000);
       }
 
       function toggleLane(zone) {
         ensureAudio();
-        if (state === "ready" || state === "gameover") {
+        if (state === "ready") {
           startGame();
           return;
         }
-        if (state !== "playing") return;
+        if (state !== "playing" || gameOverTransition || rankingCheckPending) return;
         const player = players[zone];
         player.lane = player.lane === 0 ? 1 : 0;
         player.targetX = laneX(zone, player.lane);
@@ -1224,17 +1267,31 @@
       function handlePointerDown(event) {
         pointerStartX = event.clientX;
         pointerStartY = event.clientY;
+        ignorePointerUntilRelease = gameOverTransition || rankingCheckPending;
         ensureAudio();
       }
 
       function handlePointerUp(event) {
+        if (ignorePointerUntilRelease) {
+          ignorePointerUntilRelease = false;
+          return;
+        }
+        if (
+          gameOverTransition ||
+          rankingCheckPending ||
+          !nicknameModal.hidden ||
+          !rankingModal.hidden ||
+          !adInterstitialContainer.hidden
+        ) {
+          return;
+        }
         const dx = event.clientX - pointerStartX;
         const dy = event.clientY - pointerStartY;
         if (Math.abs(dx) > Math.max(28, width * 0.08) || Math.abs(dy) > Math.max(28, height * 0.06)) {
           return;
         }
-        if (state === "gameover" && isRestartButton(event.clientX, event.clientY)) {
-          startGame();
+        if (state === "gameover") {
+          if (isRestartButton(event.clientX, event.clientY)) startGame();
           return;
         }
         toggleLane(event.clientX < width / 2 ? "blue" : "pink");
@@ -1250,6 +1307,15 @@
           closeModal(rankingModal);
           closeModal(nicknameModal);
           pendingRankingScore = null;
+          maybeShowPendingGameOverAd();
+          return;
+        }
+        if (
+          gameOverTransition ||
+          rankingCheckPending ||
+          !nicknameModal.hidden ||
+          !rankingModal.hidden
+        ) {
           return;
         }
         if (["arrowleft", "a", "arrowright", "d", " ", "enter"].includes(key)) {
@@ -1261,6 +1327,17 @@
       }
 
       function isRestartButton(x, y) {
+        if (gameOverTransition || rankingCheckPending || !nicknameModal.hidden) {
+          ctx.font = `700 ${Math.max(11, 13 * scale)}px "Segoe UI", sans-serif`;
+          ctx.fillStyle = "rgba(171, 186, 220, 0.86)";
+          ctx.fillText(
+            gameOverTransition ? "PREPARANDO RESULTADO..." : "COMPROBANDO TOP 20...",
+            width / 2,
+            height * 0.63 + 14 * scale
+          );
+          return;
+        }
+
         const button = restartButtonRect();
         return x >= button.x && x <= button.x + button.w && y >= button.y && y <= button.y + button.h;
       }
@@ -2072,6 +2149,7 @@
       skipRankingButton.addEventListener("click", () => {
         pendingRankingScore = null;
         closeModal(nicknameModal);
+        maybeShowPendingGameOverAd();
       });
       nicknameInput.addEventListener("input", () => {
         nicknameInput.value = Array.from(nicknameInput.value).slice(0, 10).join("");
@@ -2079,10 +2157,14 @@
       document.querySelectorAll("[data-close-modal]").forEach((button) => {
         button.addEventListener("click", () => {
           closeModal(document.getElementById(button.dataset.closeModal));
+          maybeShowPendingGameOverAd();
         });
       });
       rankingModal.addEventListener("click", (event) => {
-        if (event.target === rankingModal) closeModal(rankingModal);
+        if (event.target === rankingModal) {
+          closeModal(rankingModal);
+          maybeShowPendingGameOverAd();
+        }
       });
       adContinueButton.addEventListener("click", () => finishAdInterstitial("dismissed"));
       adsenseScript.addEventListener("error", () => {
