@@ -10,15 +10,9 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="icon" href="data:,">
-  <script type="importmap">
-    {
-      "imports": {
-        "@capacitor-community/admob": "/vendor/admob/index.js",
-        "@capacitor/core": "/vendor/capacitor/index.js"
-      }
-    }
-  </script>
   <title>Dodge & Catch — Neon Run</title>
+  <script src="/vendor/capacitor/capacitor.js"></script>
+  <script src="/vendor/admob/plugin.js"></script>
   <script async id="adsense-script" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
   <style>
     :root {
@@ -767,13 +761,12 @@
     </section>
   </div>
 
-  <script type="module">
-    import { AdMob } from "@capacitor-community/admob";
-    import { Capacitor } from "@capacitor/core";
-
+  <script>
     (() => {
       "use strict";
 
+      const AdMob = window.capacitorStripe?.AdMob;
+      const Capacitor = window.capacitorExports?.Capacitor;
       const canvas = document.getElementById("game");
       const ctx = canvas.getContext("2d", { alpha: false });
       const welcomeScreen = document.getElementById("welcomeScreen");
@@ -950,7 +943,7 @@
 
       function isNativeCapacitorPlatform() {
         try {
-          return Capacitor.isNativePlatform();
+          return typeof Capacitor?.isNativePlatform === "function" && Capacitor.isNativePlatform();
         } catch (error) {
           return false;
         }
@@ -1279,6 +1272,8 @@
         syncOverlayState();
         playTone(330, 0.08, "sine", 0.045);
         playTone(660, 0.1, "sine", 0.04, 0.05);
+        ctx.clearRect(0, 0, width, height);
+        draw(performance.now());
       }
 
       function endGame(hitPlayer) {

@@ -13,7 +13,7 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "8kb" }));
 app.use(
   "/vendor/admob",
-  express.static(path.join(__dirname, "node_modules/@capacitor-community/admob/dist/esm"))
+  express.static(path.join(__dirname, "node_modules/@capacitor-community/admob/dist"))
 );
 app.use(
   "/vendor/capacitor",

@@ -1,0 +1,1 @@
+- [AdMob in the browser game](capacitor-admob-browser.md) — use the plugin’s browser-ready bundle or build output; raw ESM imports prevent the game script from running.
