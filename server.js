@@ -126,6 +126,10 @@ app.get("/manifest.json", (_request, response) => {
   response.sendFile(publicFile("manifest.json"));
 });
 
+app.get("/privacy.html", (_request, response) => {
+  response.sendFile(publicFile("privacy.html"));
+});
+
 app.get("/sw.js", (_request, response) => {
   response.sendFile(publicFile("sw.js"));
 });
