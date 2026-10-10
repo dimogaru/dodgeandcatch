@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "kHsB__JGBG7bIoZcL4NG-"
+uri = "file://feature-graphic.png"
+type = "image"
+title = "Feature Graphic — Dodge & Catch"
+description = "Gráfico arcade neón para Google Play Store, exportado como PNG de 1024 × 500 px."
+logical_id = "a2f61901-c820-4a26-8375-878073a16f09"
+content_hash = "sha256:7e9f13daa423d839a6d63e7a310cc4b19d8c206efc0e7bf39805b3f58433bd3c"
+size = 174938
+mtime_ms = 1791632136584
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:a3f9432b-d20e-498b-bf1a-fff1df044a84/a2f61901-c820-4a26-8375-878073a16f09/afdb8087-5ab7-4739-a848-f3d3f646fa6e"
+storage_version_token = "1791632162609387"
+content_type = "image/png"
