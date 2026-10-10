@@ -843,6 +843,10 @@
       let pointerStartX = 0;
       let pointerStartY = 0;
       let ignorePointerUntilRelease = false;
+      let pointerIsDown = false;
+      const heldGameKeys = new Set();
+      const blockedGameKeys = new Set();
+      const GAME_CONTROL_KEYS = new Set(["arrowleft", "a", "arrowright", "d", " ", "enter"]);
 
       const items = [];
       const particles = [];
@@ -1238,6 +1242,10 @@
         syncOverlayState();
         gameOverTransition = true;
         rankingCheckPending = false;
+        if (pointerIsDown) ignorePointerUntilRelease = true;
+        for (const key of heldGameKeys) {
+          if (GAME_CONTROL_KEYS.has(key)) blockedGameKeys.add(key);
+        }
         gameOverTransitionTimer = window.setTimeout(() => {
           if (state !== "gameover") return;
           gameOverTransition = false;
@@ -1267,11 +1275,13 @@
       function handlePointerDown(event) {
         pointerStartX = event.clientX;
         pointerStartY = event.clientY;
+        pointerIsDown = true;
         ignorePointerUntilRelease = gameOverTransition || rankingCheckPending;
         ensureAudio();
       }
 
       function handlePointerUp(event) {
+        pointerIsDown = false;
         if (ignorePointerUntilRelease) {
           ignorePointerUntilRelease = false;
           return;
@@ -1299,6 +1309,20 @@
 
       function handleKeyDown(event) {
         const key = event.key.toLowerCase();
+        if (GAME_CONTROL_KEYS.has(key)) {
+          heldGameKeys.add(key);
+          if (blockedGameKeys.has(key)) return;
+          if (
+            gameOverTransition ||
+            rankingCheckPending ||
+            !nicknameModal.hidden ||
+            !rankingModal.hidden ||
+            !adInterstitialContainer.hidden
+          ) {
+            blockedGameKeys.add(key);
+            return;
+          }
+        }
         if (!adInterstitialContainer.hidden) {
           if (key === "escape") finishAdInterstitial("escape");
           return;
@@ -1326,18 +1350,14 @@
         if ((key === " " || key === "enter") && state !== "playing") startGame();
       }
 
-      function isRestartButton(x, y) {
-        if (gameOverTransition || rankingCheckPending || !nicknameModal.hidden) {
-          ctx.font = `700 ${Math.max(11, 13 * scale)}px "Segoe UI", sans-serif`;
-          ctx.fillStyle = "rgba(171, 186, 220, 0.86)";
-          ctx.fillText(
-            gameOverTransition ? "PREPARANDO RESULTADO..." : "COMPROBANDO TOP 20...",
-            width / 2,
-            height * 0.63 + 14 * scale
-          );
-          return;
-        }
+      function handleKeyUp(event) {
+        const key = event.key.toLowerCase();
+        heldGameKeys.delete(key);
+        blockedGameKeys.delete(key);
+      }
 
+      function isRestartButton(x, y) {
+        if (gameOverTransition || rankingCheckPending || !nicknameModal.hidden) return false;
         const button = restartButtonRect();
         return x >= button.x && x <= button.x + button.w && y >= button.y && y <= button.y + button.h;
       }
@@ -2107,6 +2127,17 @@
         ctx.fillStyle = COLORS.muted;
         ctx.fillText("SCORE", width / 2, centerY + 126 * scale);
 
+        if (gameOverTransition || rankingCheckPending || !nicknameModal.hidden) {
+          ctx.font = `700 ${Math.max(11, 13 * scale)}px "Segoe UI", sans-serif`;
+          ctx.fillStyle = "rgba(171, 186, 220, 0.86)";
+          ctx.fillText(
+            gameOverTransition ? "PREPARANDO RESULTADO..." : "COMPROBANDO TOP 20...",
+            width / 2,
+            height * 0.63 + 14 * scale
+          );
+          return;
+        }
+
         const button = restartButtonRect();
         const gradient = ctx.createLinearGradient(button.x, button.y, button.x + button.w, button.y);
         gradient.addColorStop(0, COLORS.blueSoft);
@@ -2142,6 +2173,13 @@
       canvas.addEventListener("pointerdown", handlePointerDown, { passive: true });
       canvas.addEventListener("pointerup", handlePointerUp, { passive: true });
       window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("keyup", handleKeyUp);
+      window.addEventListener("blur", () => {
+        heldGameKeys.clear();
+        blockedGameKeys.clear();
+        pointerIsDown = false;
+        ignorePointerUntilRelease = false;
+      });
       startButton.addEventListener("click", startGame);
       welcomeRankingButton.addEventListener("click", openRankingModal);
       rankingButton.addEventListener("click", openRankingModal);
