@@ -50,12 +50,17 @@ jobs:
           pnpm capacitor add android || true
           pnpm capacitor sync android
 
-      - name: Configurar AdMob en AndroidManifest.xml
+      - name: Configurar AdMob e Incrementar Versión Dinámicamente
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           ADMOB_APP_ID="ca-app-pub-9984763727647656~8985067364"
-          
           sed -i "/<\/application>/i \        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB_APP_ID\"/>" $MANIFEST
+
+          # Incrementar versionCode dinámicamente usando el número de ejecución de GitHub
+          BUILD_NUMBER=${{ github.run_number }}
+          GRADLE_FILE="android/app/build.gradle"
+          sed -i "s/versionCode 1/versionCode $BUILD_NUMBER/g" $GRADLE_FILE
+          sed -i "s/versionName \"1.0\"/versionName \"1.$BUILD_NUMBER\"/g" $GRADLE_FILE
 
       - name: Decodificar Keystore de Firma guardado
         env:
