@@ -11,6 +11,7 @@
   <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="icon" href="data:,">
   <title>Dodge & Catch — Neon Run</title>
+  <script>window.API_BASE_URL = window.API_BASE_URL || "";</script>
   <script src="/vendor/capacitor/capacitor.js"></script>
   <script src="/vendor/admob/plugin.js"></script>
   <script async id="adsense-script" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
@@ -601,6 +602,15 @@
       color: #a6b5d1;
     }
 
+    .ranking-retry {
+      display: block;
+      margin: 8px auto 0;
+    }
+
+    .ranking-retry[hidden] {
+      display: none;
+    }
+
     .modal-button:disabled {
       cursor: wait;
       filter: grayscale(0.45);
@@ -731,6 +741,7 @@
         </table>
       </div>
       <p id="rankingStatus" class="modal-status" aria-live="polite"></p>
+      <button id="rankingRetryButton" class="modal-button secondary ranking-retry" type="button" hidden>REINTENTAR CONEXIÓN</button>
     </section>
   </div>
 
@@ -778,6 +789,7 @@
       const rankingModal = document.getElementById("rankingModal");
       const rankingBody = document.getElementById("rankingBody");
       const rankingStatus = document.getElementById("rankingStatus");
+      const rankingRetryButton = document.getElementById("rankingRetryButton");
       const nicknameModal = document.getElementById("nicknameModal");
       const nicknameInput = document.getElementById("nicknameInput");
       const nicknameScore = document.getElementById("nicknameScore");
@@ -798,6 +810,13 @@
       const AD_FREQUENCY_STORAGE_KEY = "dodge-catch-ad-frequency-v1";
       const AD_COOLDOWN_MS = 8 * 60 * 1000;
       const AD_LOAD_TIMEOUT_MS = 10 * 1000;
+      const API_TIMEOUT_MS = 7000;
+      const RANKING_CACHE_KEY = "dodge-catch-ranking-cache-v1";
+      const configuredApiBaseUrl = String(window.API_BASE_URL || "").trim().replace(/\/+$/, "");
+      const nativeRuntime = ["capacitor:", "ionic:", "file:"].includes(window.location.protocol) ||
+        Boolean(Capacitor?.isNativePlatform?.() || Capacitor?.isNative?.());
+      const API_BASE_URL = configuredApiBaseUrl ||
+        (nativeRuntime ? "https://dodge.dimogaru.es" : "");
 
       const COLORS = {
         bg: "#080a16",
@@ -1051,13 +1070,46 @@
           .slice(0, 20);
       }
 
+      async function fetchApi(path, options = {}) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+        try {
+          return await fetch(`${API_BASE_URL}${path}`, {
+            ...options,
+            cache: options.cache || "no-store",
+            signal: controller.signal
+          });
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      }
+
+      function readCachedRanking() {
+        try {
+          return normalizeRanking(JSON.parse(localStorage.getItem(RANKING_CACHE_KEY) || "[]"));
+        } catch {
+          return [];
+        }
+      }
+
+      function cacheRanking(entries) {
+        try {
+          localStorage.setItem(RANKING_CACHE_KEY, JSON.stringify(normalizeRanking(entries)));
+        } catch (error) {
+          console.warn("Could not cache the ranking locally.", error);
+        }
+      }
+
       async function fetchRanking(showPrompt = false) {
         try {
-          const response = await fetch("/api/ranking", { cache: "no-store" });
+          const response = await fetchApi("/api/scores/top");
           if (!response.ok) throw new Error("Ranking request failed");
           globalRanking = normalizeRanking(await response.json());
           rankingLoaded = true;
+          cacheRanking(globalRanking);
+          rankingRetryButton.hidden = true;
           renderRanking();
+          rankingStatus.classList.remove("error");
           rankingStatus.textContent = `${globalRanking.length} MARCAS REGISTRADAS`;
           if (showPrompt) {
             rankingCheckPending = false;
@@ -1068,10 +1120,16 @@
           }
         } catch (error) {
           rankingLoaded = false;
-          rankingStatus.textContent = "RANKING NO DISPONIBLE · INTÉNTALO DE NUEVO";
+          globalRanking = readCachedRanking();
+          renderRanking();
+          rankingStatus.classList.add("error");
+          rankingStatus.textContent = globalRanking.length
+            ? "MODO SIN CONEXIÓN · MOSTRANDO DATOS GUARDADOS"
+            : "MODO SIN CONEXIÓN · NO HAY DATOS GUARDADOS";
+          rankingRetryButton.hidden = false;
           if (showPrompt) {
             rankingCheckPending = false;
-            nicknameStatus.textContent = "No se pudo conectar con el ranking global.";
+            nicknameStatus.textContent = "Sin conexión al ranking global. La puntuación no se ha enviado.";
             maybeShowPendingGameOverAd();
           }
         }
@@ -1163,7 +1221,7 @@
         nicknameStatus.classList.remove("error");
         nicknameStatus.textContent = "GUARDANDO EN LA RED GLOBAL...";
         try {
-          const response = await fetch("/api/ranking", {
+          const response = await fetchApi("/api/scores", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ nickname, score })
@@ -1172,6 +1230,7 @@
           if (!response.ok) throw new Error(result.error || "No se pudo guardar");
           globalRanking = normalizeRanking(result.ranking);
           rankingLoaded = true;
+          cacheRanking(globalRanking);
           pendingRankingScore = null;
           closeModal(nicknameModal);
           openRankingModal();

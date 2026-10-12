@@ -10,6 +10,40 @@ const pool = new Pool({
 });
 
 app.disable("x-powered-by");
+const allowedMobileOrigins = new Set([
+  "capacitor://localhost",
+  "ionic://localhost",
+  "http://localhost",
+  "https://localhost",
+  "https://dodge.dimogaru.es"
+]);
+
+app.use((request, response, next) => {
+  const origin = request.get("Origin");
+  const isLocalAppOrigin =
+    typeof origin === "string" &&
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+  const isAndroidAppOrigin =
+    typeof origin === "string" &&
+    /^android-app:\/\/[a-z0-9.-]+$/i.test(origin);
+
+  if (!origin || allowedMobileOrigins.has(origin) || isLocalAppOrigin || isAndroidAppOrigin) {
+    if (origin) response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Vary", "Origin");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    response.setHeader("Access-Control-Max-Age", "86400");
+  }
+
+  if (request.method === "OPTIONS") {
+    return response.sendStatus(
+      origin && !allowedMobileOrigins.has(origin) && !isLocalAppOrigin && !isAndroidAppOrigin
+        ? 403
+        : 204
+    );
+  }
+  next();
+});
 app.use(express.json({ limit: "8kb" }));
 app.use(
   "/vendor/admob",
@@ -70,7 +104,7 @@ async function requireDatabase(response) {
   return false;
 }
 
-app.get("/api/ranking", async (_request, response) => {
+app.get(["/api/ranking", "/api/scores", "/api/scores/top"], async (_request, response) => {
   if (!(await requireDatabase(response))) return;
   try {
     const result = await pool.query(
@@ -86,7 +120,7 @@ app.get("/api/ranking", async (_request, response) => {
   }
 });
 
-app.post("/api/ranking", async (request, response) => {
+app.post(["/api/ranking", "/api/scores"], async (request, response) => {
   const body = request.body && typeof request.body === "object" ? request.body : {};
   const nickname = normalizeNickname(body.nickname);
   const score = Number(body.score);
