@@ -753,6 +753,7 @@
         <input id="nicknameInput" class="nickname-input" type="text" maxlength="10" autocomplete="nickname" placeholder="TU APODO" aria-label="Apodo de máximo 10 caracteres">
         <p class="nickname-hint">MÁXIMO 10 CARACTERES · PUNTUACIÓN: <strong id="nicknameScore">0</strong></p>
         <p id="nicknameStatus" class="modal-status" aria-live="polite"></p>
+        <button id="nicknameRetryButton" class="modal-button secondary ranking-retry" type="button" hidden>REINTENTAR CONEXIÓN</button>
         <div class="modal-actions">
           <button id="saveRankingButton" class="modal-button" type="button">GUARDAR EN RANKING GLOBAL</button>
           <button id="skipRankingButton" class="modal-button secondary" type="button">AHORA NO</button>
@@ -794,6 +795,7 @@
       const nicknameInput = document.getElementById("nicknameInput");
       const nicknameScore = document.getElementById("nicknameScore");
       const nicknameStatus = document.getElementById("nicknameStatus");
+      const nicknameRetryButton = document.getElementById("nicknameRetryButton");
       const saveRankingButton = document.getElementById("saveRankingButton");
       const skipRankingButton = document.getElementById("skipRankingButton");
       const adInterstitialContainer = document.getElementById("ad-interstitial-container");
@@ -1204,6 +1206,7 @@
         nicknameInput.value = "";
         nicknameStatus.textContent = "";
         nicknameStatus.classList.remove("error");
+        nicknameRetryButton.hidden = true;
         saveRankingButton.disabled = false;
         nicknameModal.hidden = false;
         window.setTimeout(() => nicknameInput.focus(), 40);
@@ -1231,13 +1234,15 @@
           globalRanking = normalizeRanking(result.ranking);
           rankingLoaded = true;
           cacheRanking(globalRanking);
+          nicknameRetryButton.hidden = true;
           pendingRankingScore = null;
           closeModal(nicknameModal);
           openRankingModal();
         } catch (error) {
           saveRankingButton.disabled = false;
-          nicknameStatus.textContent = error.message || "No se pudo guardar la puntuación.";
+          nicknameStatus.textContent = "MODO SIN CONEXIÓN · NO SE HA ENVIADO. REINTENTA.";
           nicknameStatus.classList.add("error");
+          nicknameRetryButton.hidden = false;
         }
       }
 
@@ -2294,7 +2299,15 @@
       startButton.addEventListener("click", startGame);
       welcomeRankingButton.addEventListener("click", openRankingModal);
       rankingButton.addEventListener("click", openRankingModal);
+      rankingRetryButton.addEventListener("click", async () => {
+        rankingRetryButton.disabled = true;
+        rankingRetryButton.textContent = "REINTENTANDO...";
+        await fetchRanking();
+        rankingRetryButton.disabled = false;
+        rankingRetryButton.textContent = "REINTENTAR CONEXIÓN";
+      });
       saveRankingButton.addEventListener("click", saveRankingScore);
+      nicknameRetryButton.addEventListener("click", saveRankingScore);
       skipRankingButton.addEventListener("click", () => {
         pendingRankingScore = null;
         closeModal(nicknameModal);
