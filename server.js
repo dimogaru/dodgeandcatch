@@ -172,6 +172,10 @@ app.get("/icon.svg", (_request, response) => {
   response.type("image/svg+xml").sendFile(publicFile("icon.svg"));
 });
 
+app.get("/icon-512x512.png", (_request, response) => {
+  response.type("image/png").sendFile(publicFile("icon-512x512.png"));
+});
+
 function normalizeNickname(value) {
   if (typeof value !== "string") return "";
   return Array.from(value)

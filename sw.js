@@ -1,5 +1,5 @@
 const CACHE_NAME = "dodge-catch-shell-v1";
-const APP_SHELL = ["/", "/index.html", "/manifest.json", "/icon.svg"];
+const APP_SHELL = ["/", "/index.html", "/manifest.json", "/icon.svg", "/icon-512x512.png"];
 const GOOGLE_AD_HOSTS = ["googlesyndication.com", "doubleclick.net"];
 
 function isGoogleAdsHost(hostname) {
