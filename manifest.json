@@ -1,6 +1,6 @@
 {
-  "name": "Dodge & Catch",
-  "short_name": "Dodge & Catch",
+  "name": "dodgeandcatch",
+  "short_name": "dodgeandcatch",
   "description": "Juego neon de esquivar bloques y atrapar gemas.",
   "start_url": "/",
   "scope": "/",
