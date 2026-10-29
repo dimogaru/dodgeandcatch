@@ -41,13 +41,18 @@ jobs:
 
       - name: Instalar e Inicializar Capacitor con pnpm
         run: |
-          pnpm add -D @capacitor/cli @capacitor/core @capacitor/android @capacitor-community/admob
+          pnpm add -D @capacitor/cli @capacitor/core @capacitor/android @capacitor-community/admob @capacitor/assets
           mkdir -p dist
           if [ -d "public" ]; then cp -r public/* dist/ 2>/dev/null || true; fi
           if [ -f "index.html" ]; then cp index.html dist/; fi
           
           pnpm capacitor init DodgeAndCatch com.dodgeandcatch.app --web-dir dist
           pnpm capacitor add android || true
+          pnpm capacitor sync android
+
+      - name: Generar e Inyectar Iconos Nativos del Juego
+        run: |
+          npx capacitor-assets generate --iconAvailable icon-512x512.png --iconSource icon-512x512.png
           pnpm capacitor sync android
 
       - name: Configurar AdMob e Incrementar Versión Dinámicamente
@@ -76,6 +81,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
+          ./gradlew clean
           ./gradlew bundleRelease
           
           jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 -keystore release.keystore -storepass "$STORE_PASS" app/build/outputs/bundle/release/app-release.aab "$KEY_ALIAS"
