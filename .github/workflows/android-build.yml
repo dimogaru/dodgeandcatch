@@ -39,35 +39,32 @@ jobs:
           NODE_ENV: 'production'
         run: pnpm build || true
 
-      - name: Preparar carpeta dist e Inicializar Capacitor
+      - name: Instalar e Inicializar Capacitor con pnpm
         run: |
+          pnpm add -D @capacitor/cli @capacitor/core @capacitor/android @capacitor-community/admob sharp
           mkdir -p dist
           if [ -d "public" ]; then cp -r public/* dist/ 2>/dev/null || true; fi
           if [ -f "index.html" ]; then cp index.html dist/; fi
           
-          if [ ! -d "android" ]; then
-            pnpm exec cap init DodgeAndCatch com.dodgeandcatch.app --web-dir dist
-            pnpm exec cap add android
-          fi
-          pnpm exec cap sync android
+          pnpm capacitor init DodgeAndCatch com.dodgeandcatch.app --web-dir dist
+          pnpm capacitor add android || true
+          
+          # Generar iconos nativos con la estrella neón e inyectarlos
+          node generate-icons.js || true
+          
+          pnpm capacitor sync android
 
       - name: Configurar AdMob e Incrementar Versión Dinámicamente
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           ADMOB_APP_ID="ca-app-pub-9984763727647656~8985067364"
-          
-          if [ -f "$MANIFEST" ]; then
-            if ! grep -q "com.google.android.gms.ads.APPLICATION_ID" "$MANIFEST"; then
-              sed -i "/<\/application>/i \        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB_APP_ID\"/>" $MANIFEST
-            fi
-          fi
+          sed -i "/<\/application>/i \        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB_APP_ID\"/>" $MANIFEST
 
+          # Incrementar versionCode dinámicamente usando el número de ejecución de GitHub
           BUILD_NUMBER=${{ github.run_number }}
           GRADLE_FILE="android/app/build.gradle"
-          if [ -f "$GRADLE_FILE" ]; then
-            sed -i "s/versionCode 1/versionCode $BUILD_NUMBER/g" $GRADLE_FILE
-            sed -i "s/versionName \"1.0\"/versionName \"1.$BUILD_NUMBER\"/g" $GRADLE_FILE
-          fi
+          sed -i "s/versionCode 1/versionCode $BUILD_NUMBER/g" $GRADLE_FILE
+          sed -i "s/versionName \"1.0\"/versionName \"1.$BUILD_NUMBER\"/g" $GRADLE_FILE
 
       - name: Decodificar Keystore de Firma guardado
         env:
