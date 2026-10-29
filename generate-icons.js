@@ -7,13 +7,18 @@ const sizes = [
   { folder: "mipmap-hdpi", size: 72 },
   { folder: "mipmap-xhdpi", size: 96 },
   { folder: "mipmap-xxhdpi", size: 144 },
-  { folder: "mipmap-xxxhdpi", size: 192 }
+  { folder: "mipmap-xxxhdpi", size: 192 },
 ];
 
 const inputIcon = path.join(__dirname, "icon-512x512.png");
 const androidRes = path.join(__dirname, "android/app/src/main/res");
 
 async function generate() {
+  if (!fs.existsSync(inputIcon)) {
+    console.error("No se encontró el archivo icon-512x512.png");
+    return;
+  }
+
   for (const item of sizes) {
     const dir = path.join(androidRes, item.folder);
     if (!fs.existsSync(dir)) {
@@ -29,7 +34,7 @@ async function generate() {
       .resize(item.size, item.size)
       .toFile(path.join(dir, "ic_launcher_foreground.png"));
   }
-  console.log("Iconos de Android generados correctamente con la estrella neón.");
+  console.log("Iconos de Android generados con éxito.");
 }
 
 generate().catch(console.error);
