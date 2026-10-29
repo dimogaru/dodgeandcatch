@@ -39,32 +39,29 @@ jobs:
           NODE_ENV: 'production'
         run: pnpm build || true
 
-      - name: Instalar e Inicializar Capacitor con pnpm
+      - name: Inicializar Capacitor e Inyectar Iconos
         run: |
           pnpm add -D @capacitor/cli @capacitor/core @capacitor/android @capacitor-community/admob sharp
           mkdir -p dist
           if [ -d "public" ]; then cp -r public/* dist/ 2>/dev/null || true; fi
           if [ -f "index.html" ]; then cp index.html dist/; fi
           
-          # Inicializar proyecto si no existe
-          pnpm capacitor init DodgeAndCatch com.dodgeandcatch.app --web-dir dist || true
+          # Inicializar e instalar plataforma Android
+          pnpm exec cap init DodgeAndCatch com.dodgeandcatch.app --web-dir dist || true
+          pnpm exec cap add android || true
           
-          # Crear directorio android si no está presente
-          if [ ! -d "android" ]; then
-            pnpm capacitor add android
+          # Generar iconos con la estrella neón sobre la estructura Android recién creada
+          if [ -f "generate-icons.js" ]; then
+            node generate-icons.js
           fi
           
-          # Generar e inyectar iconos nativos con la estrella neón
-          node generate-icons.js || true
-          
-          pnpm capacitor sync android
+          pnpm exec cap sync android
 
       - name: Configurar AdMob e Incrementar Versión Dinámicamente
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           ADMOB_APP_ID="ca-app-pub-9984763727647656~8985067364"
           
-          # Verificar existencia del manifiesto antes de modificarlo
           if [ -f "$MANIFEST" ]; then
             if ! grep -q "com.google.android.gms.ads.APPLICATION_ID" "$MANIFEST"; then
               sed -i "/<\/application>/i \        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB_APP_ID\"/>" $MANIFEST
