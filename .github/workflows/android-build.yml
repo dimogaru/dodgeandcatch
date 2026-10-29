@@ -46,10 +46,10 @@ jobs:
           if [ -f "index.html" ]; then cp index.html dist/; fi
           
           if [ ! -d "android" ]; then
-            pnpm capacitor init DodgeAndCatch com.dodgeandcatch.app --web-dir dist
-            pnpm capacitor add android
+            pnpm exec cap init DodgeAndCatch com.dodgeandcatch.app --web-dir dist
+            pnpm exec cap add android
           fi
-          pnpm capacitor sync android
+          pnpm exec cap sync android
 
       - name: Configurar AdMob e Incrementar Versión Dinámicamente
         run: |
